@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+.npm
+.yarn/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Data - 运行时数据不应该提交
+data/*.db
+data/*.zip
+data/thumbnails/*
+data/photos/*
+
+# Environment
+.env
+.env.local
+venv/
+.venv/
+env/
+
+# macOS
+.DS_Store

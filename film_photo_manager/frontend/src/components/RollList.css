@@ -1,0 +1,73 @@
+.roll-list {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.roll-list-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #eee;
+  font-weight: 500;
+}
+
+.roll-list-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: #999;
+}
+
+.roll-list-empty .hint {
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.roll-card {
+  padding: 12px 16px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+  transition: background 0.2s;
+  position: relative;
+}
+
+.roll-card:hover {
+  background: #f5f5f5;
+}
+
+.roll-card.selected {
+  background: #e3f2fd;
+  border-left: 3px solid #1976d2;
+}
+
+.roll-card-title {
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.roll-card-info {
+  font-size: 12px;
+  color: #666;
+}
+
+.roll-delete-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #f44336;
+  color: white;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.roll-card:hover .roll-delete-btn {
+  opacity: 1;
+}
+
+.roll-delete-btn:hover {
+  background: #d32f2f;
+}
