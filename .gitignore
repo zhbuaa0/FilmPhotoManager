@@ -1,37 +1,13 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg-info/
-dist/
-build/
+# Local library, originals, generated previews and native build cache
+data/
 
-# Node
+# Dependencies and local environment
 node_modules/
-.npm
-.yarn/
-*.log
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Data - 运行时数据不应该提交
-data/*.db
-data/*.zip
-data/thumbnails/*
-data/photos/*
-
-# Environment
 .env
-.env.local
-venv/
-.venv/
-env/
+.env.*
+!.env.example
 
-# macOS
+# Logs and operating system files
+*.log
 .DS_Store
+Thumbs.db

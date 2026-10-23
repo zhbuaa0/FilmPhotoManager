@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="光匣，本机胶片档案。按卷整理照片，记录拍摄与冲洗，生成接触印样。">
+  <title>光匣 · 胶片档案</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="光匣首页"><span class="brand-mark">◉</span><span>光匣<small>LIGHTBOX / FILM ARCHIVE</small></span></a>
+    <div class="side-label">我的暗房 <span>01</span></div>
+    <nav aria-label="胶卷档案">
+      <button class="nav-item active" id="all-rolls"><span>▦</span>全部胶卷<b id="count-all">0</b></button>
+    </nav>
+    <div class="side-note"><span class="tiny-tag">从按下快门，到再次看见</span><p>每一卷，<br>一段时光。</p><div class="mini-perfs" aria-hidden="true"></div></div>
+    <div class="local-status"><span></span>本机档案 <button id="storage-help" aria-label="查看保存说明">ⓘ</button><small>原始照片保存在电脑</small></div>
+  </aside>
+  <main>
+    <header class="topbar"><span>胶片档案 <i>/</i> <span id="breadcrumb">全部胶卷</span></span><span class="edition">PERSONAL DARKROOM <b>№ 001</b></span></header>
+    <section id="library-view">
+      <div class="heading-row"><div><div class="eyebrow">THE ROLL COLLECTION</div><h1>我的胶卷<span class="accent">.</span></h1><p class="muted">把散落的扫描照片，放回属于它们的那一卷。</p></div><div class="button-group"><button class="secondary" id="import-folder">导入文件夹</button><button class="primary" id="new-roll"><span>＋</span>新建胶卷</button></div></div>
+      <div class="stats"><div><span>归档胶卷</span><strong id="stat-rolls">00</strong><small>ROLLS</small></div><div><span>扫描照片</span><strong id="stat-photos">000</strong><small>FRAMES</small></div><div><span>使用相机</span><strong id="stat-cameras">00</strong><small>CAMERAS</small></div><div class="stats-caption"><span>底扫</span><i>—</i><span>成片</span><i>—</i><span>预览</span><p>光留在胶片里，记忆留在这里。</p></div></div>
+      <div class="collection-toolbar"><div><h2 id="collection-title">全部胶卷</h2><span id="visible-count">0 卷</span></div><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="搜索名称、相机、胶卷或编号" aria-label="搜索胶卷"></label></div>
+      <div id="roll-grid" class="roll-grid"></div>
+      <div id="library-empty" class="empty-library"><div class="empty-film" aria-hidden="true"><span>01</span><span>02</span><span>03</span></div><h2>从你的第一卷开始</h2><p>给胶卷一个编号，记下相机与时间，<br>再把冲洗后的电子照片放进来。</p><button class="primary" id="empty-new">＋ 建立第一卷档案</button><small>支持 TIFF / JPG / PNG / WebP / GIF · 保留原文件</small></div>
+    </section>
+    <section id="detail-view" hidden>
+      <button class="back" id="back-library">‹ 返回胶卷库</button>
+      <div class="heading-row detail-heading"><div class="detail-heading-info"><div class="eyebrow" id="roll-number"></div><h1 id="roll-title"><input id="inline-title" name="title" form="roll-inline-form" aria-label="胶卷名称" required maxlength="160" placeholder="填写胶卷名称" class="inline-title"></h1><div id="roll-summary" class="roll-summary"></div></div><div class="button-group"><button class="primary" id="import-photos">＋ 导入照片</button></div></div>
+      <form id="roll-inline-form" class="inline-archive" aria-label="胶卷档案" novalidate>
+        <div class="archive-fields archive-basics">
+          <label>实物胶卷编号<input name="number" required maxlength="160" placeholder="填写编号"></label>
+          <label>相机<input name="camera" maxlength="160" placeholder="填写相机" list="camera-options"></label>
+          <label>胶卷型号<input name="film" maxlength="160" placeholder="填写胶卷型号" list="film-options"></label>
+          <label>感光度 ISO<input name="iso" inputmode="numeric" maxlength="160" placeholder="填写 ISO"></label>
+          <label>胶片规格<select name="format"><option value="">选择规格</option><option>135</option><option>120</option><option>110</option><option>大画幅</option><option>其他</option></select></label>
+        </div>
+        <div class="archive-fields archive-dates">
+          <label>上卷时间<input name="loadedAt" type="date"></label>
+          <label>拍摄开始<input name="shotStart" type="date"></label>
+          <label>拍摄结束<input name="shotEnd" type="date"></label>
+          <label>冲洗时间<input name="developedAt" type="date"></label>
+          <label>冲洗店 / 实验室<input name="lab" maxlength="160" placeholder="填写冲洗店"></label>
+        </div>
+        <label class="archive-notes">备注<textarea name="notes" rows="1" maxlength="4000" placeholder="拍摄地点、冲洗工艺，或这卷的故事…"></textarea></label>
+        <div class="archive-save-status" id="archive-save-status" role="status"></div>
+        <p id="archive-save-error" class="form-error" role="alert"></p>
+      </form>
+      <div id="roll-meta" class="archive-source"></div>
+      <div class="photos-toolbar"><div class="view-tabs" role="tablist" aria-label="照片浏览方式"><button role="tab" aria-selected="true" id="grid-tab">▦ 接触印样</button><button role="tab" aria-selected="false" id="film-tab">▤ 胶片浏览</button></div><div class="button-group"><label class="version-choice">显示版本<select id="version-view"><option value="finished">优先成片</option><option value="scan">扫描原片</option></select></label><label class="check-label"><input type="checkbox" id="star-filter">只看精选</label><button class="secondary" id="orientation-check">自动方向识别</button><button class="secondary" id="export-sheet">生成整卷预览</button></div></div>
+      <div id="import-progress" class="progress-wrap" hidden><span id="progress-label"></span><progress id="progress-bar" value="0" max="100"></progress></div>
+      <div id="photo-empty" class="photo-empty"><div class="eyebrow">ADD YOUR SCANS</div><h2>导入这一卷的照片</h2><p>选择照片或把文件拖到这里，<br>按文件名自然排序，原始照片完整保留。</p><button class="secondary" id="empty-import">选择扫描照片</button><small>支持 TIFF、JPG、PNG、WebP、GIF，每张不超过 80 MB；THM 自动忽略</small></div>
+      <div id="photo-grid" class="photo-grid"></div>
+      <div id="film-view" class="film-view" hidden><div class="film-control"><div><span class="film-mode-label">FILM ON THE LIGHT TABLE</span><span>拖动胶片 · 滚轮走片 · 点击放大</span></div><div class="button-group"><button id="film-prev" class="secondary" aria-label="前一帧胶片">‹</button><strong id="film-position" aria-live="polite">01 / 01</strong><button id="film-next" class="secondary" aria-label="后一帧胶片">›</button><button id="play-film" class="secondary">▷ 自动走片</button></div></div><div class="film-stage"><div id="film-strip" class="film-strip" tabindex="0" aria-label="横向胶片照片"></div></div><div class="film-scrubber"><span>卷头</span><input id="film-seek" type="range" min="0" max="0" value="0" step="1" aria-label="定位胶片帧"><span>卷尾</span></div></div>
+      <p id="photo-hint" class="photo-hint" hidden>点击照片放大 · 拖动照片调整帧序 · 星标保留精选</p>
+      <button id="delete-roll" class="danger-text">删除这一卷</button>
+    </section>
+    <footer><span>光匣 / LIGHTBOX</span><span>KEEP THE GRAIN. KEEP THE MEMORY.</span></footer>
+  </main>
+  <input type="file" id="photo-input" multiple accept=".tif,.tiff,.jpg,.jpeg,.png,.webp,.gif,image/tiff,image/jpeg,image/png,image/webp,image/gif" hidden>
+  <dialog id="roll-dialog"><form id="roll-form"><div class="dialog-heading"><div><div class="eyebrow">ROLL INFORMATION</div><h2 id="form-title">新建胶卷档案</h2></div><button type="button" class="icon-button close-dialog" aria-label="关闭">×</button></div>
+    <div class="form-grid"><label class="full">胶卷名称 <span>*</span><input name="title" required maxlength="160" placeholder="例如：秋天的散步"></label><label>实物胶卷编号 <span>*</span><input name="number" required maxlength="160" placeholder="例如：2026-001"></label><label>相机<input name="camera" maxlength="160" placeholder="例如：Nikon FM2" list="camera-options"></label><label>胶卷型号<input name="film" maxlength="160" placeholder="例如：Kodak Gold 200" list="film-options"></label><label>感光度 ISO<input name="iso" inputmode="numeric" placeholder="200" maxlength="160"></label><label>胶片规格<select name="format"><option value="">待补全</option><option>135</option><option>120</option><option>110</option><option>大画幅</option><option>其他</option></select></label><label>上卷时间<input name="loadedAt" type="date"></label><label>冲洗时间<input name="developedAt" type="date"></label><label>拍摄开始<input name="shotStart" type="date"></label><label>拍摄结束<input name="shotEnd" type="date"></label><label class="full">冲洗店 / 实验室<input name="lab" placeholder="这卷在哪里冲洗？" maxlength="160"></label><label class="full">备注<textarea name="notes" rows="3" maxlength="4000" placeholder="拍摄地点、冲洗工艺，或这卷的故事…"></textarea></label></div><p id="form-error" role="alert" class="form-error"></p><div class="dialog-actions"><button type="button" class="secondary close-dialog">取消</button><button class="primary" type="submit" id="save-roll">保存档案</button></div>
+  </form></dialog>
+  <datalist id="camera-options"></datalist><datalist id="film-options"></datalist>
+  <dialog id="viewer-dialog" class="viewer-dialog"><div class="viewer-top"><span id="viewer-label"></span><button id="viewer-close" class="icon-button" aria-label="关闭照片">×</button></div><div class="viewer-image"><button id="viewer-prev" class="icon-button" aria-label="上一张">‹</button><img id="viewer-img" alt=""><button id="viewer-next" class="icon-button" aria-label="下一张">›</button></div><p id="viewer-error" role="status" class="muted"></p><div class="viewer-bottom"><div><span id="viewer-info"></span><label class="version-choice">查看版本<select id="viewer-version" aria-label="查看照片版本"></select></label></div><div class="button-group"><button id="viewer-star" class="secondary">☆ 精选</button><button id="viewer-rotate" class="secondary">↻ 旋转</button><a id="download-original" class="secondary" download>下载原图</a><button id="delete-photo" class="danger-text">删除照片</button></div></div></dialog>
+  <dialog id="export-dialog"><div class="dialog-heading"><div><div class="eyebrow">CONTACT SHEET</div><h2>整卷接触印样</h2></div><button class="icon-button close-dialog" aria-label="关闭">×</button></div><p class="muted">包含这一卷的全部照片、帧序与档案信息，使用当前显示版本。固定比例会重新排布整卷照片，保留完整画面。</p><div class="form-grid"><label class="full">预览图比例<select id="sheet-format"><option value="3:2" selected>3:2 横向 · 照片打印</option><option value="16:9">16:9 横向 · 宽幅预览</option><option value="free">按内容自动适配 · 接触印样</option></select></label><label>每行帧数<select id="sheet-columns"><option value="auto" selected>自动排布 · 推荐</option><option value="3">3 帧</option><option value="4">4 帧</option><option value="6">6 帧</option><option value="8">8 帧</option></select></label><label>底色<select id="sheet-theme"><option value="dark">暗房黑</option><option value="light">相纸白</option></select></label></div><p class="muted" id="sheet-format-hint">3:2 横向，适合常规照片打印；照片完整显示，留出四周边距。</p><div id="sheet-preview" class="sheet-preview"></div><p id="sheet-info" class="muted"></p><div class="dialog-actions"><button class="secondary close-dialog">关闭</button><button id="download-sheet" class="primary">下载 PNG 预览图</button></div></dialog>
+  <dialog id="orientation-dialog" class="orientation-dialog"><div class="dialog-heading"><div><div class="eyebrow">LOCAL ORIENTATION CHECK</div><h2>自动方向识别</h2></div><button class="icon-button close-dialog" aria-label="关闭方向检查">×</button></div><p class="muted">在本机检查人脸和文字朝向，照片不会上传。先预览，再应用选中的建议；依据不明确的照片留待确认，已手动调整的方向默认保留。</p><p id="orientation-status" class="muted" aria-live="polite"></p><div id="orientation-progress" class="progress-wrap" hidden><span id="orientation-progress-label"></span><progress id="orientation-progress-bar" value="0" max="100"></progress></div><div id="orientation-review" hidden><div class="orientation-review-toolbar"><label>查看结果<select id="orientation-filter"><option value="attention">需要关注的照片</option><option value="pending">待确认的照片</option><option value="all">全部照片</option></select></label><button id="orientation-select-recommended" class="secondary">选中可靠建议</button></div><div id="orientation-results" class="orientation-results"></div></div><p id="orientation-error" role="alert" class="form-error"></p><div class="orientation-actions"><span id="orientation-selected">已选 0 张照片</span><div class="button-group"><button id="orientation-rescan" class="secondary">重新识别</button><button id="orientation-undo" class="secondary" disabled>撤销本次调整</button><button id="orientation-apply" class="primary" disabled>应用选中方向</button></div></div></dialog>
+  <dialog id="folder-dialog"><div class="dialog-heading"><div><div class="eyebrow">IMPORT YOUR ARCHIVE</div><h2>按文件夹导入胶卷</h2></div><button class="icon-button close-dialog" aria-label="关闭">×</button></div><p class="muted">每个胶卷子文件夹建立一卷档案。自动忽略 THM，通过成片中的原文件名关联 TIFF；不会把扫描仪或修图日期当成拍摄信息。</p><div class="form-grid"><label class="full">本机文件夹路径<input id="folder-path" placeholder="粘贴胶片文件夹的完整路径" autocomplete="off"></label><label class="full">原图保存方式<select id="folder-mode"><option value="reference">引用原目录 · 省空间，需保留原文件夹</option><option value="copy">复制原图到光匣 · 独立保存</option></select></label></div><div id="folder-summary" class="folder-summary"></div><p id="folder-error" class="form-error" role="alert"></p><div id="folder-progress" class="progress-wrap" hidden><span id="folder-progress-label"></span><progress id="folder-progress-bar" value="0" max="100"></progress></div><div class="dialog-actions"><button class="secondary" id="inspect-folder">检查文件夹</button><button class="primary" id="start-folder-import" disabled>开始导入</button></div></dialog>
+  <dialog id="confirm-dialog"><div class="dialog-heading"><h2 id="confirm-title"></h2></div><p id="confirm-description" class="muted"></p><div class="dialog-actions"><button id="confirm-cancel" class="secondary">取消</button><button id="confirm-yes" class="danger-button">确认删除</button></div></dialog>
+  <dialog id="help-dialog"><div class="dialog-heading"><h2>你的本机档案</h2><button class="icon-button close-dialog" aria-label="关闭">×</button></div><p>照片与胶卷信息保存在软件文件夹里的 <code>data</code> 文件夹，关闭浏览器不会丢失。</p><p>备份时，先停止光匣，再复制整个 <code>data</code> 文件夹到移动硬盘。恢复时把它放回原位置即可。</p><p class="muted">原始照片不会被压缩或改写；浏览缩略图单独保存。通过“导入文件夹”引用的原片继续保存在原目录；请同时备份原文件夹。此版本只在当前电脑使用。</p><div class="dialog-actions"><button class="primary close-dialog">知道了</button></div></dialog>
+  <div id="toast" role="status" aria-live="polite"></div><script type="module" src="app.js"></script>
+</body></html>

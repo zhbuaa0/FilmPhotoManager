@@ -1,0 +1,57 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
+const execute=promisify(execFile),root=path.dirname(fileURLToPath(import.meta.url));
+let preparing;
+export function classifyOrientation(candidates) {
+  const unknown={angle:null,reliable:false,method:'unknown',reason:'没有足够明确的人脸或文字朝向，请手动确认。'};
+  if(!Array.isArray(candidates)||candidates.length!==4)return unknown;
+  const faces=[...candidates].sort((a,b)=>b.faceScore-a.faceScore),best=faces[0];
+  if(best.faces>0&&best.faceWeight>=0.0015&&best.faceScore>=0.65&&best.faceScore-faces[1].faceScore>=0.25) return {angle:best.angle,reliable:true,method:'face',reason:'清晰人脸在这个方向更接近正立；请核对是否为刻意横躺或倾斜构图。'};
+  const texts=[...candidates].sort((a,b)=>b.textScore-a.textScore),text=texts[0];
+  if(text.textLines>=2&&text.textChars>=8&&text.textScore>=7&&text.textScore>=texts[1].textScore*1.6+3) {
+    if(best.faces>0&&best.faceScore>=0.5&&best.angle!==text.angle)return {...unknown,reason:'人脸与文字给出的方向不一致，请手动确认。'};
+    return {angle:text.angle,reliable:true,method:'text',reason:'多行文字在这个方向更容易识别；请核对背景文字是否代表整张照片的方向。'};
+  }
+  return best.faces>0?{...unknown,reason:'人脸朝向倾斜或不同人物方向不一致，请手动确认。'}:unknown;
+}
+export async function detectOrientation(file,dataDir) {
+  if(process.platform!=='darwin')throw new Error('自动方向识别目前支持 macOS 本机运行。');
+  const bundled=path.join(root,'native',`orientation-${process.arch}`),cached=path.join(dataDir,'tools',`orientation-${process.arch}`);
+  let binary=fs.existsSync(bundled)?bundled:cached;
+  if(!fs.existsSync(binary)) {
+    if(!preparing)preparing=(async()=>{fs.mkdirSync(path.dirname(cached),{recursive:true});await execute('/usr/bin/xcrun',['swiftc',path.join(root,'native','orientation.swift'),'-O','-module-cache-path',path.join(dataDir,'tools','swift-cache'),'-o',cached],{timeout:120000,maxBuffer:1024*1024});})().finally(()=>{preparing=null;});
+    try{await preparing;}catch{throw new Error('本机识别引擎无法准备，请安装 Apple 命令行开发工具后重试。');}
+    binary=cached;
+  }
+  let output;
+  try{output=await execute(binary,[file],{timeout:60000,maxBuffer:1024*1024});}catch{throw new Error('本机视觉引擎未能读取这张照片，方向保持不变。');}
+  const result=JSON.parse(output.stdout.trim());if(result.error)throw new Error('本机方向检测失败，方向保持不变。');
+  return classifyOrientation(result.candidates);
+}
+export function applyOrientationDecisions(roll,decisions,scanId) {
+  if(!Array.isArray(decisions)||!decisions.length)throw new Error('请先勾选要调整的照片。');
+  if(new Set(decisions.map(d=>d.photoId)).size!==decisions.length)throw new Error('照片选择重复。');
+  const changes=decisions.map(d=>{
+    const photo=roll.photos.find(p=>p.id===d.photoId);
+    if(!photo||photo.orientationCheck?.scanId!==scanId)throw new Error('识别结果已变化，请重新检查。');
+    if(![0,90,180,270].includes(d.rotation))throw new Error('旋转角度无效。');
+    if((photo.rotation||0)!==d.expectedRotation||(photo.rotationRevision||0)!==d.expectedRevision)throw new Error('照片方向已被调整，请重新打开识别结果。');
+    return {photo,rotation:d.rotation};
+  }).filter(({photo,rotation})=>(photo.rotation||0)!==rotation);
+  const undo=[];
+  for(const {photo,rotation} of changes) {
+    undo.push({id:photo.id,before:photo.rotation||0,source:photo.rotationSource||null,after:rotation,revision:(photo.rotationRevision||0)+1});
+    photo.rotation=rotation;photo.rotationSource=photo.orientationCheck.reliable&&photo.orientationCheck.angle===rotation?'auto':'manual';photo.rotationRevision=(photo.rotationRevision||0)+1;
+  }
+  if(undo.length)roll.orientationUndo={changes:undo,appliedAt:new Date().toISOString()};
+  return changes.length;
+}
+export function undoOrientationDecisions(roll) {
+  if(!roll.orientationUndo)throw new Error('没有可撤销的方向调整。');
+  let restored=0,skipped=0;
+  for(const item of roll.orientationUndo.changes){const photo=roll.photos.find(p=>p.id===item.id);if(!photo||photo.rotation!==item.after||(photo.rotationRevision||0)!==item.revision){skipped++;continue;}photo.rotation=item.before;photo.rotationRevision++;if(item.source)photo.rotationSource=item.source;else delete photo.rotationSource;restored++;}
+  delete roll.orientationUndo;return {restored,skipped};
+}
