@@ -42,18 +42,19 @@ function metadata(input, existingId) {
   return result;
 }
 function imageType(b) {
+  if(b.length>=54&&b.toString('ascii',0,2)==='BM')return ['bmp','image/bmp'];
   if (b.length>=4 && ((b[0]===73&&b[1]===73&&[42,43].includes(b.readUInt16LE(2)))||(b[0]===77&&b[1]===77&&[42,43].includes(b.readUInt16BE(2))))) return ['tif','image/tiff'];
   if (b[0] === 255 && b[1] === 216 && b[2] === 255) return ['jpg', 'image/jpeg'];
   if (b.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) return ['png', 'image/png'];
   if (b.subarray(0,4).toString() === 'RIFF' && b.subarray(8,12).toString() === 'WEBP') return ['webp', 'image/webp'];
   if (b.subarray(0,6).toString().match(/^GIF8[79]a$/)) return ['gif', 'image/gif'];
-  throw new Error('支持 TIFF、JPG、PNG、WebP 和 GIF；HEIC、RAW 请先转换。');
+  throw new Error('支持 TIFF、BMP、JPG、PNG、WebP 和 GIF；HEIC、RAW 请先转换。');
 }
-const types = { '.mjs': 'text/javascript; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif', '.tif':'image/tiff', '.tiff':'image/tiff' };
+const types = { '.mjs': 'text/javascript; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif', '.bmp':'image/bmp', '.tif':'image/tiff', '.tiff':'image/tiff' };
 const jobs = new Map(), conversions=new Map();
 const orientationJobs = new Map();
 for (const roll of library.rolls) if (roll.orientationScan?.status === 'running') { roll.orientationScan.status='interrupted'; save(); }
-const versionsOf=p=>p.versions?.length?p.versions:[{id:p.id,name:p.name,mime:p.mime,bytes:p.bytes,file:p.file,thumbnail:p.thumbnail,kind:p.mime==='image/tiff'?'scan':'image'}];
+const versionsOf=p=>p.versions?.length?p.versions:[{id:p.id,name:p.name,mime:p.mime,bytes:p.bytes,file:p.file,thumbnail:p.thumbnail,kind:['image/tiff','image/bmp'].includes(p.mime)?'scan':'image'}];
 async function scanOrientation(roll,job,preference) {
   const photos=[...roll.photos];
   for (const photo of photos) {
@@ -81,7 +82,7 @@ async function importFolder(plan,mode,job) {
       let roll=library.rolls.find(r=>r.sourceFolder===sourceRoll.folder);
       if(!roll) {
         if(library.rolls.some(r=>r.number===sourceRoll.number)){job.errors.push(`${sourceRoll.label}：编号已使用，请修改已有编号再导入。`);job.processed+=sourceRoll.frames.length;continue;}
-        roll={id:randomUUID(),...Object.fromEntries(fields.map(k=>[k,''])),title:`${path.basename(plan.root)} · ${sourceRoll.label}`,number:sourceRoll.number,notes:`编号来自文件夹名称，可修改为实物胶卷编号。${sourceRoll.label.includes('欠曝')?'\n文件夹备注：部分欠曝。':''}`,photos:[],sourceFolder:sourceRoll.folder,storageMode:mode,createdAt:new Date().toISOString()};
+        roll={id:randomUUID(),...Object.fromEntries(fields.map(k=>[k,''])),title:`${path.basename(plan.root)} · ${sourceRoll.label}`,number:sourceRoll.number,notes:sourceRoll.notes,photos:[],sourceFolder:sourceRoll.folder,storageMode:mode,createdAt:new Date().toISOString()};
         library.rolls.push(roll);save();
       }
       job.rollIds.push(roll.id);
@@ -125,15 +126,16 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
     const parts = url.pathname.split('/').filter(Boolean);
+    if(req.method==='GET'&&url.pathname==='/api/capabilities')return json(res,200,{platform:process.platform,automaticOrientation:process.platform==='darwin'});
     if (req.method === 'GET' && url.pathname === '/api/library') return json(res, 200, library);
     if(req.method==='POST'&&url.pathname==='/api/folder/inspect'){
-      const input=JSON.parse(await body(req)),plan=inspectFolder(input.path);
-      return json(res,200,{root:plan.root,frames:plan.frames,versions:plan.versions,bytes:plan.bytes,ignored:plan.ignored,rolls:plan.rolls.map(r=>({label:r.label,number:r.number,frames:r.frames.length,paired:r.paired,tiffs:r.tiffs,bytes:r.bytes}))});
+      const input=JSON.parse(await body(req)),plan=inspectFolder(input.path,{includeAggregates:input.includeAggregates===true});
+      return json(res,200,{root:plan.root,frames:plan.frames,versions:plan.versions,bytes:plan.bytes,ignored:plan.ignored,warnings:plan.warnings,rolls:plan.rolls.map(r=>({label:r.label,number:r.number,notes:r.notes,frames:r.frames.length,paired:r.paired,tiffs:r.tiffs,bytes:r.bytes}))});
     }
     if(req.method==='POST'&&url.pathname==='/api/folder/import'){
       if([...jobs.values()].some(j=>j.status==='running'))return json(res,409,{error:'已有文件夹正在导入，请等待完成。'});
       const input=JSON.parse(await body(req));if(!['reference','copy'].includes(input.mode))throw new Error('请选择保存方式。');
-      const plan=inspectFolder(input.path),job={id:randomUUID(),status:'running',total:plan.frames,processed:0,importedFrames:0,importedVersions:0,copiedFiles:0,skipped:0,errors:[],rollIds:[],mode:input.mode,current:'',startedAt:new Date().toISOString()};
+      const plan=inspectFolder(input.path,{includeAggregates:input.includeAggregates===true}),job={id:randomUUID(),status:'running',total:plan.frames,processed:0,importedFrames:0,importedVersions:0,copiedFiles:0,skipped:0,errors:[],rollIds:[],mode:input.mode,current:'',startedAt:new Date().toISOString()};
       jobs.set(job.id,job);void importFolder(plan,input.mode,job);return json(res,202,job);
     }
     if(req.method==='GET'&&url.pathname==='/api/imports/active')return json(res,200,[...jobs.values()].find(j=>j.status==='running')||null);
@@ -193,7 +195,7 @@ const server = http.createServer(async (req, res) => {
         if (!library.rolls.includes(roll)) return json(res, 409, { error: '胶卷已删除。' });
         const id = randomUUID(); const photo = { id, file: `${id}.${ext}`, name: path.basename(decodeURIComponent(req.headers['x-file-name'] || 'scan.' + ext)).slice(0, 200), mime, bytes: bytes.length, starred: false, createdAt: new Date().toISOString() };
         fs.writeFileSync(path.join(dataDir, 'photos', photo.file), bytes);
-        if(mime==='image/tiff'){
+        if(['image/tiff','image/bmp'].includes(mime)){
           photo.thumbnail=`${id}-thumb.jpg`;
           try{await makePreview(path.join(dataDir,'photos',photo.file),path.join(dataDir,'photos',photo.thumbnail));}
           catch(e){fs.rmSync(path.join(dataDir,'photos',photo.file),{force:true});throw e;}
@@ -215,7 +217,7 @@ const server = http.createServer(async (req, res) => {
           const requestedRotation=url.searchParams.get('rotation'),rotation=requestedRotation===null?(photo.rotation||0):Number(requestedRotation),small=parts[5]==='thumbnail';
           if(![0,90,180,270].includes(rotation))throw new Error('旋转角度无效。');
           if(small&&!rotation)return fileResponse(res,path.join(dataDir,'photos',version.thumbnail||photo.thumbnail),'image/jpeg');
-          if(!small&&version.mime!=='image/tiff'&&!rotation)return fileResponse(res,source,version.mime);
+          if(!small&&!['image/tiff','image/bmp'].includes(version.mime)&&!rotation)return fileResponse(res,source,version.mime);
           const input=small?path.join(dataDir,'photos',version.thumbnail||photo.thumbnail):source;
           if(!input||!fs.existsSync(input))return json(res,404,{error:'原片不在原位置，请恢复原文件夹。'});
           const preview=`${version.id}${rotation?'-r'+rotation:''}-${small?'thumb':'view'}.jpg`,target=path.join(dataDir,'photos',preview);
@@ -247,7 +249,7 @@ const server = http.createServer(async (req, res) => {
       }
       return json(res, 404, { error: '操作不存在。' });
     }
-    if (req.method === 'GET' && parts[0] === 'photos' && parts.length === 2 && /^[a-f0-9-]+(?:-(thumb|view))?\.(jpg|png|webp|gif|tiff?)$/.test(parts[1])) {
+    if (req.method === 'GET' && parts[0] === 'photos' && parts.length === 2 && /^[a-f0-9-]+(?:-(thumb|view))?\.(jpg|png|webp|gif|bmp|tiff?)$/.test(parts[1])) {
       const file = path.join(dataDir, 'photos', parts[1]);
       if (!fs.existsSync(file)) return json(res, 404, { error: '文件不存在。' });
       res.writeHead(200, { 'Content-Type': types[path.extname(file)], 'Cache-Control': 'private, max-age=86400', 'Content-Length': fs.statSync(file).size });

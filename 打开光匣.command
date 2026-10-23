@@ -6,9 +6,7 @@ if ! command -v node >/dev/null 2>&1; then
   read -k 1
   exit 1
 fi
-if curl -fsS http://127.0.0.1:4317/api/library >/dev/null 2>&1; then
-  open http://127.0.0.1:4317
-  exit 0
+if [ ! -f node_modules/sharp/package.json ]; then
+  npm ci || exit 1
 fi
-(sleep 1; open http://127.0.0.1:4317) &
-node server.mjs
+node launcher.mjs

@@ -2,10 +2,11 @@ import { setupInlineArchive } from './inline-archive.js';
 import { setupOrientation } from './orientation-ui.js';
 import { sheetLayout, framePosition } from './sheet-layout.mjs';
 const $ = s => document.querySelector(s);
+let automaticOrientation=true;
 let library = { rolls: [] }, currentId = null, view = 'grid', viewerIndex = 0, editingId = null, uploadBusy = false, filmTimer = null, sheetCanvas = null, sheetGeneration = 0, viewerVersion = null, folderBusy=false, checkedFolder=null;
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const current = () => library.rolls.find(r => r.id === currentId);
-const photoVersions = p => p.versions?.length ? p.versions : [{id:p.id,name:p.name,mime:p.mime,bytes:p.bytes,thumbnail:p.thumbnail,file:p.file,kind:p.mime==='image/tiff'?'scan':'image'}];
+const photoVersions = p => p.versions?.length ? p.versions : [{id:p.id,name:p.name,mime:p.mime,bytes:p.bytes,thumbnail:p.thumbnail,file:p.file,kind:['image/tiff','image/bmp'].includes(p.mime)?'scan':'image'}];
 const preferredVersion = p => photoVersions(p).find(v=>v.kind===($('#version-view')?.value||'finished'))||photoVersions(p)[0];
 const imageUrl = p => p.rotation ? `/api/rolls/${library.rolls.find(r=>r.photos.some(f=>f.id===p.id))?.id}/photos/${p.id}/thumbnail?version=${preferredVersion(p).id}&rotation=${p.rotation}` : '/photos/' + (preferredVersion(p).thumbnail || p.thumbnail || p.file);
 const date = d => d ? d.replaceAll('-', '.') : '未记录';
@@ -46,7 +47,7 @@ function renderDetail() {
   const r = current(); if (!r) return;
   renderArchiveLabels(r);inlineArchive.render(r);
   $('#roll-meta').textContent=r.sourceFolder?`${r.storageMode==='reference'?'引用原目录，请保留原文件夹':'原图已复制到光匣'} · ${r.sourceFolder}`:'';
-  renderPhotos(); $('#export-sheet').disabled = !r.photos.length || uploadBusy; $('#orientation-check').disabled = !r.photos.length || uploadBusy;
+  renderPhotos(); $('#export-sheet').disabled = !r.photos.length || uploadBusy; $('#orientation-check').disabled = !r.photos.length || uploadBusy; $('#orientation-check').textContent=automaticOrientation?'自动方向识别':'方向核对';
 }
 function renderPhotos() {
   const r = current(); if (!r) return;
@@ -121,9 +122,9 @@ async function importPhotos(files) {
   for (let i=0; i<sorted.length; i++) {
     const file = sorted[i]; $('#progress-label').textContent = `正在导入 ${i+1} / ${sorted.length} · ${file.name}`;
     try {
-      if (!/\.(tiff?|jpe?g|png|webp|gif)$/i.test(file.name)) throw new Error('文件格式不支持');
+      if (!/\.(tiff?|bmp|jpe?g|png|webp|gif)$/i.test(file.name)) throw new Error('文件格式不支持');
       if (file.size > 80*1024*1024) throw new Error('文件超过 80 MB');
-      const thumb = /\.tiff?$/i.test(file.name)?null:await thumbnail(file); // TIFF 在本机服务生成预览，浏览器不直接解码原片。
+      const thumb = /\.(tiff?|bmp)$/i.test(file.name)?null:await thumbnail(file); // TIFF / BMP 由本机服务生成预览。
       const photo = await api(`/api/rolls/${rollId}/photos`, { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) }, body: file });
       completed++;
       if (thumb) try { await api(`/api/rolls/${rollId}/photos/${photo.id}/thumbnail`, { method: 'POST', body: thumb }); } catch { thumbsFailed++; }
@@ -230,11 +231,12 @@ $('#viewer-img').onerror=()=>{$('#viewer-img').style.opacity='0';$('#viewer-erro
 $('#viewer-rotate').onclick=async()=>{const r=current(),p=visiblePhotos()[viewerIndex];if(!p)return;$('#viewer-rotate').disabled=true;try{const result=await send(`/api/rolls/${r.id}/photos/${p.id}`,'PUT',{rotation:((p.rotation||0)+90)%360});Object.assign(p,result);renderPhotos();renderViewer();}catch(e){toast(e.message);}finally{$('#viewer-rotate').disabled=false;}};
 $('#import-folder').onclick=()=>$('#folder-dialog').showModal();
 $('#folder-path').oninput=()=>{checkedFolder=null;$('#start-folder-import').disabled=true;$('#folder-summary').replaceChildren();$('#folder-error').textContent='';};
+$('#include-aggregates').onchange=()=>$('#folder-path').oninput();
 $('#inspect-folder').onclick=async()=>{
   $('#inspect-folder').disabled=true;$('#folder-error').textContent='';
   try {
-    const plan=await send('/api/folder/inspect','POST',{path:$('#folder-path').value});checkedFolder=plan.root;
-    $('#folder-summary').innerHTML=`<p><strong>${plan.rolls.length} 卷 · ${plan.frames} 帧</strong><br>${plan.versions} 个原图 / 成片文件 · ${(plan.bytes/1024**3).toFixed(2)} GB · 忽略 ${plan.ignored} 个辅助文件</p><table><thead><tr><th>胶卷目录</th><th>帧数</th><th>已关联成片</th></tr></thead><tbody>${plan.rolls.map(r=>`<tr><td>${esc(r.label)}</td><td>${r.frames}</td><td>${r.paired}</td></tr>`).join('')}</tbody></table><p class="muted">重复导入同一目录会跳过已收录的文件。相机、胶卷型号与拍摄日期待你补全。</p>`;
+    const plan=await send('/api/folder/inspect','POST',{path:$('#folder-path').value,includeAggregates:$('#include-aggregates').checked});checkedFolder=plan.root;
+    $('#folder-summary').innerHTML=`<p><strong>${plan.rolls.length} 卷 · ${plan.frames} 帧</strong><br>${plan.versions} 个原图 / 成片文件 · ${(plan.bytes/1024**3).toFixed(2)} GB · 忽略 ${plan.ignored} 个辅助文件</p><table><thead><tr><th>胶卷目录</th><th>编号</th><th>帧数</th><th>已关联成片</th></tr></thead><tbody>${plan.rolls.map(r=>`<tr><td>${esc(r.label)}</td><td>${esc(r.number)}</td><td>${r.frames}</td><td>${r.paired}</td></tr>`).join('')}</tbody></table>${(plan.warnings||[]).map(w=>`<p class="muted">${esc(w)}</p>`).join('')}<p class="muted">重复导入同一目录会跳过已收录的文件。相机、胶卷型号与拍摄日期待你补全。</p>`;
     $('#start-folder-import').disabled=false;
   }catch(e){checkedFolder=null;$('#start-folder-import').disabled=true;$('#folder-error').textContent=e.message;}finally{$('#inspect-folder').disabled=false;}
 };
@@ -253,7 +255,7 @@ async function followImport(id) {
 }
 $('#start-folder-import').onclick=async()=>{
   if(!checkedFolder||folderBusy)return;$('#start-folder-import').disabled=true;$('#folder-error').textContent='';
-  try { const job=await send('/api/folder/import','POST',{path:checkedFolder,mode:$('#folder-mode').value});await followImport(job.id); }catch(e){$('#folder-error').textContent=e.message;$('#start-folder-import').disabled=false;}
+  try { const job=await send('/api/folder/import','POST',{path:checkedFolder,mode:$('#folder-mode').value,includeAggregates:$('#include-aggregates').checked});await followImport(job.id); }catch(e){$('#folder-error').textContent=e.message;$('#start-folder-import').disabled=false;}
 };
 $('#export-sheet').onclick=()=>{ $('#sheet-preview').replaceChildren(); $('#export-dialog').showModal(); buildSheet(); };
 $('#sheet-format').onchange=$('#sheet-columns').onchange=$('#sheet-theme').onchange=buildSheet;
@@ -280,4 +282,5 @@ $('#detail-view').addEventListener('drop',e=>{if(e.dataTransfer.files.length){e.
 window.addEventListener('beforeunload',e=>{if(uploadBusy){e.preventDefault();e.returnValue='';}});
 api('/api/imports/active').then(job=>{if(job){$('#folder-dialog').showModal();followImport(job.id);}}).catch(()=>{});
 setupOrientation({getCurrent:current,getVersions:photoVersions,refresh,toast,stopFilm});
+api('/api/capabilities').then(c=>{automaticOrientation=c.automaticOrientation;if(!automaticOrientation){$('#orientation-dialog h2').textContent='方向核对';$('#orientation-dialog>p.muted').textContent='当前平台采用手动方向核对。对照预览选择旋转角度，应用后可以撤销；原片不会改写。';$('#orientation-rescan').textContent='重新核对';}if(current())renderDetail();}).catch(()=>{});
 refresh().catch(e=>{ $('#library-empty').innerHTML='<h2>暂时无法连接本机档案</h2><p>请确认光匣已启动，再刷新页面。</p>'; toast(e.message); });

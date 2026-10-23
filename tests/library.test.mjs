@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import sharp from 'sharp';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -35,6 +36,13 @@ test('胶卷档案、原图、帧序和磁盘恢复', async t => {
   const upload=await fetch(base+`/api/rolls/${id}/photos`,{method:'POST',headers:{'X-File-Name':encodeURIComponent('中文扫描-1.png')},body:png});assert.equal(upload.status,201);const photo=await upload.json();
   const original=Buffer.from(await(await fetch(base+'/photos/'+photo.file)).arrayBuffer());assert.deepEqual(original,png);assert.equal(photo.name,'中文扫描-1.png');
   const bad=await fetch(base+`/api/rolls/${id}/photos`,{method:'POST',body:'bad image'});assert.equal(bad.status,400);
+  const bmp=Buffer.alloc(62);bmp.write('BM');bmp.writeUInt32LE(62,2);bmp.writeUInt32LE(54,10);bmp.writeUInt32LE(40,14);bmp.writeInt32LE(2,18);bmp.writeInt32LE(1,22);bmp.writeUInt16LE(1,26);bmp.writeUInt16LE(24,28);bmp[56]=255;bmp[58]=255;
+  const bmpUpload=await fetch(base+`/api/rolls/${id}/photos`,{method:'POST',headers:{'X-File-Name':encodeURIComponent('扫描.BMP')},body:bmp});assert.equal(bmpUpload.status,201);const bitmap=await bmpUpload.json();assert.equal(bitmap.mime,'image/bmp');assert.ok(bitmap.thumbnail);
+  const bmpRoute=`/api/rolls/${id}/photos/${bitmap.id}`;
+  assert.deepEqual(Buffer.from(await(await fetch(base+bmpRoute+'/original')).arrayBuffer()),bmp);
+  assert.equal((await fetch(base+bmpRoute+'/display')).headers.get('content-type'),'image/jpeg');
+  const bmpRotated=await fetch(base+bmpRoute+'/display?rotation=90');assert.equal(bmpRotated.status,200);const bmpMeta=await sharp(Buffer.from(await bmpRotated.arrayBuffer())).metadata();assert.equal(bmpMeta.width,1);assert.equal(bmpMeta.height,2);
+  await call(bmpRoute,'DELETE');
   const thumb=await fetch(base+`/api/rolls/${id}/photos/${photo.id}/thumbnail`,{method:'POST',body:png});assert.equal(thumb.status,200);const thumbnail=(await thumb.json()).thumbnail;
   await call(`/api/rolls/${id}/photos/${photo.id}`,'PUT',{starred:true});
   assert.equal((await call(`/api/rolls/${id}/order`,'PUT',{ids:[photo.id,photo.id]})).status,400);
@@ -71,8 +79,8 @@ test('TIFF 文件夹、XMP 成片关联、重复导入和源文件保护',async 
   const tiff=Buffer.from('SUkqAAgAAAAKAAABBAABAAAACAAAAAEBBAABAAAACAAAAAIBAwADAAAAhgAAAAMBAwABAAAAAQAAAAYBAwABAAAAAgAAABEBBAABAAAAjAAAABUBAwABAAAAAwAAABYBBAABAAAACAAAABcBBAABAAAAwAAAABwBAwABAAAAAQAAAAAAAAAIAAgACABablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablA=','base64');
   const first=path.join(folder,'000012340001.TIF'),second=path.join(folder,'000012340002.TIF'),finished=path.join(folder,'成片','名称不同的成片.jpg');fs.writeFileSync(first,tiff);fs.writeFileSync(second,tiff);fs.writeFileSync(path.join(folder,'辅助.thm'),'ignored');
   await makePreview(second,finished);
-  const previewSize=execFileSync('/usr/bin/sips',['-g','pixelWidth','-g','pixelHeight',finished],{encoding:'utf8'});
-  assert.match(previewSize,/pixelWidth:\s*8\b/);assert.match(previewSize,/pixelHeight:\s*8\b/);
+  const previewSize=await sharp(finished).metadata();
+  assert.equal(previewSize.width,8);assert.equal(previewSize.height,8);
   const jpg=fs.readFileSync(finished),xmp=Buffer.from('http://ns.adobe.com/xap/1.0/\0<x:xmpmeta xmpMM:PreservedFileName="000012340002.tif"/>'),length=Buffer.alloc(2);length.writeUInt16BE(xmp.length+2);fs.writeFileSync(finished,Buffer.concat([jpg.subarray(0,2),Buffer.from([255,225]),length,xmp,jpg.subarray(2)]));
   const plan=inspectFolder(fixture);assert.equal(plan.frames,2);assert.equal(plan.versions,3);assert.equal(plan.ignored,1);assert.equal(plan.rolls[0].paired,1);
   await start();t.after(async()=>{if(process.exitCode===null)await stop();fs.rmSync(data,{recursive:true,force:true});fs.rmSync(fixture,{recursive:true,force:true});});

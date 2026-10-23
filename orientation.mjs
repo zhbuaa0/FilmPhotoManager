@@ -18,7 +18,7 @@ export function classifyOrientation(candidates) {
   return best.faces>0?{...unknown,reason:'人脸朝向倾斜或不同人物方向不一致，请手动确认。'}:unknown;
 }
 export async function detectOrientation(file,dataDir) {
-  if(process.platform!=='darwin')throw new Error('自动方向识别目前支持 macOS 本机运行。');
+  if(process.platform!=='darwin')return {angle:null,reliable:false,method:'manual',reason:'此平台暂不支持自动人脸与文字识别，请对照预览手动选择方向。'};
   const bundled=path.join(root,'native',`orientation-${process.arch}`),cached=path.join(dataDir,'tools',`orientation-${process.arch}`);
   let binary=fs.existsSync(bundled)?bundled:cached;
   if(!fs.existsSync(binary)) {
