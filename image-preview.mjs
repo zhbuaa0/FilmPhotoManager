@@ -5,6 +5,7 @@ import bmp from 'bmp-js';
 
 export async function makePreview(source,target,maxSize=1600,rotation=0) {
   if(!Number.isInteger(maxSize)||maxSize<1||![0,90,180,270].includes(rotation))throw new Error('预览尺寸或旋转角度无效。');
+  if(path.resolve(source)===path.resolve(target))throw new Error('预览图必须保存到独立文件，原文件未改动。');
   try {
     let image;
     if(path.extname(source).toLowerCase()==='.bmp') {

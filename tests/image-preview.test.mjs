@@ -28,5 +28,6 @@ test('BMP 转 JPEG 保留颜色、上下方向和原图；缩放不放大，旋�
   await makePreview(source,target,1600,90);const rotated=await sharp(target).metadata();assert.equal(rotated.width,20);assert.equal(rotated.height,31);
   await makePreview(source,target,10);const small=await sharp(target).metadata();assert.equal(small.width,10);assert.ok(small.height<=10);
   assert.deepEqual(fs.readFileSync(source),original);
+  await assert.rejects(makePreview(source,source),/独立文件/);assert.deepEqual(fs.readFileSync(source),original);
   fs.writeFileSync(source,'broken BMP');await assert.rejects(makePreview(source,target),/无法解码/);assert.equal(fs.existsSync(target),false);
 });
