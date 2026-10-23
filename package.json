@@ -5,7 +5,7 @@
   "description": "光匣 — 本地胶片档案",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20.9.0"
