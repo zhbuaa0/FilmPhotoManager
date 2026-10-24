@@ -52,5 +52,12 @@ export function setupInlineArchive({getCurrent,save,onSaved}) {
     if(event.target.form===form&&event.key==='Escape'){event.preventDefault();const roll=getCurrent();event.target.value=roll[event.target.name]||'';track(event);event.target.blur();}
   });
   form.addEventListener('submit',event=>{event.preventDefault();void commit(displayedId,drafts.get(displayedId));});
-  return {render};
+  async function applyFields(values) {
+    const roll=getCurrent();if(!roll)throw new Error('请先打开要记录的胶卷。');
+    const state=stateFor(roll);if(state.saving)throw new Error('上一项修改正在保存，请稍后再选用。');
+    for(const [key,value] of Object.entries(values))if(fields.includes(key))state.values[key]=String(value);
+    state.revision++;state.error='';render(roll);await commit(roll.id,state);
+    if(state.error)throw new Error(state.error);
+  }
+  return {render,applyFields};
 }

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
 import net from 'node:net';
 import { inspectFolder,makePreview } from '../local-import.mjs';
+import {filmSelection} from '../public/film-catalog.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'lightbox-test-'));
@@ -58,9 +59,13 @@ test('胶卷档案、原图、帧序和磁盘恢复', async t => {
   t.after(async()=>{if(process.exitCode===null)await stop();fs.rmSync(data,{recursive:true,force:true});});
   const meta={title:'测试胶卷',number:'TEST-001',camera:'Nikon FM2',film:'Gold 200',loadedAt:'2026-09-01',shotStart:'2026-09-02',shotEnd:'2026-09-05',developedAt:'2026-09-07'};
   assert.equal((await call('/api/library')).body.rolls.length,0);
+  assert.ok((await call('/api/film-stocks')).body.length>=50);
+  assert.equal((await fetch(base+'/film-images/not-a-model.jpg')).status,404);
   assert.equal((await call('/api/rolls','POST',{...meta,shotEnd:'2026-08-01'})).status,400);
   assert.equal((await call('/api/rolls','POST',{...meta,loadedAt:'2026-02-30'})).status,400);
   const created=await call('/api/rolls','POST',meta);assert.equal(created.status,201);const id=created.body.id;assert.equal(created.body.status,undefined);
+  const picked=await call(`/api/rolls/${id}`,'PUT',{...meta,...filmSelection('kodak-portra-400',{format:'135',iso:400})});assert.equal(picked.body.film,'Kodak Portra 400');assert.equal(picked.body.iso,'400');assert.equal(picked.body.camera,meta.camera);assert.equal(picked.body.shotStart,meta.shotStart);
+  assert.equal((await call(`/api/rolls/${id}`,'PUT',meta)).status,200);
   assert.equal((await call('/api/rolls','POST',meta)).status,400);
   const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jY1kAAAAASUVORK5CYII=','base64');
   const upload=await fetch(base+`/api/rolls/${id}/photos`,{method:'POST',headers:{'X-File-Name':encodeURIComponent('中文扫描-1.png')},body:png});assert.equal(upload.status,201);const photo=await upload.json();
