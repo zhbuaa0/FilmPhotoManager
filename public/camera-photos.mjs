@@ -6,7 +6,7 @@ export const cameraPhotoReferences=[
 ];
 export function inferCameraPhoto(camera) {
   const model=String(camera.model||'').normalize('NFKC').toLowerCase(),brand=String(camera.brand||'').toLowerCase();
-  if(!/zoom|变焦/.test(model)&&/olympus|奥林巴斯|奥利巴斯/.test(brand+' '+model)&&/mju.*ii\b|μ.*ii\b|\bu2\b/.test(model))return 'olympus-mju-ii';
+  if(!/zoom|变焦/.test(model)&&/olympus|奥林巴斯|奥利巴斯/.test(brand+' '+model)&&/(?:mju|μ)[^\p{L}\p{N}]*ii\b|\bu2\b/u.test(model))return 'olympus-mju-ii';
   if(!/300d|iii\s*l\b|digital/.test(model)&&/kiss\s*(iii|3)\b|eos\s*300\b|rebel\s*2000\b/.test(model))return 'canon-kiss-iii';
   return '';
 }
