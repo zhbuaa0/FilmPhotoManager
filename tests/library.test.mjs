@@ -7,14 +7,20 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
+import net from 'node:net';
 import { inspectFolder,makePreview } from '../local-import.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'lightbox-test-'));
-const base = 'http://127.0.0.1:14317';
+// Windows may reserve a fixed port; let the OS choose an available test port.
+const probe=net.createServer();
+await new Promise((resolve,reject)=>{probe.once('error',reject);probe.listen(0,'127.0.0.1',resolve);});
+const port=probe.address().port;
+await new Promise(resolve=>probe.close(resolve));
+const base = `http://127.0.0.1:${port}`;
 let process;
 async function start() {
-  process = spawn(globalThis.process.execPath, [path.join(root, 'server.mjs')], { env: { ...globalThis.process.env, PORT: '14317', LIGHTBOX_DATA_DIR: data }, stdio: ['ignore', 'pipe', 'pipe'] });
+  process = spawn(globalThis.process.execPath, [path.join(root, 'server.mjs')], { env: { ...globalThis.process.env, PORT: String(port), LIGHTBOX_DATA_DIR: data }, stdio: ['ignore', 'pipe', 'pipe'] });
   await Promise.race([once(process.stdout, 'data'), once(process, 'exit').then(() => { throw new Error('测试服务未启动'); })]);
 }
 async function stop() { const done = once(process, 'exit'); process.kill('SIGTERM'); await done; }

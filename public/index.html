@@ -13,6 +13,14 @@
     <nav aria-label="胶卷档案">
       <button class="nav-item active" id="all-rolls"><span>▦</span>全部胶卷<b id="count-all">0</b></button>
     </nav>
+    <section id="roll-navigation" class="roll-navigation" aria-label="切换胶卷" hidden>
+      <div class="roll-navigation-heading"><h2>胶卷目录</h2><span id="roll-navigation-position" aria-live="polite"></span></div>
+      <div class="roll-navigation-arrows"><button id="previous-roll" class="secondary" aria-label="上一卷">‹ 上一卷</button><button id="next-roll" class="secondary" aria-label="下一卷">下一卷 ›</button></div>
+      <label class="roll-navigation-search"><span class="sr-only">搜索胶卷目录</span><input id="roll-navigation-search" type="search" placeholder="搜索名称或编号" autocomplete="off"></label>
+      <select id="roll-navigation-select" aria-label="跳转到胶卷"></select>
+      <nav id="roll-navigation-list" class="roll-navigation-list" aria-label="胶卷列表"></nav>
+      <p id="roll-navigation-empty" class="muted" hidden>没有匹配的胶卷</p>
+    </section>
     <div class="side-note"><span class="tiny-tag">从按下快门，到再次看见</span><p>每一卷，<br>一段时光。</p><div class="mini-perfs" aria-hidden="true"></div></div>
     <div class="local-status"><span></span>本机档案 <button id="storage-help" aria-label="查看保存说明">ⓘ</button><small>原始照片保存在电脑</small></div>
   </aside>

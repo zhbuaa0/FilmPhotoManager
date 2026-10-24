@@ -1,5 +1,6 @@
 import { setupInlineArchive } from './inline-archive.js';
 import { setupOrientation } from './orientation-ui.js';
+import { setupRollNavigation } from './roll-navigation.js';
 import { sheetLayout, framePosition } from './sheet-layout.mjs';
 const $ = s => document.querySelector(s);
 let automaticOrientation=true;
@@ -9,6 +10,7 @@ const current = () => library.rolls.find(r => r.id === currentId);
 const photoVersions = p => p.versions?.length ? p.versions : [{id:p.id,name:p.name,mime:p.mime,bytes:p.bytes,thumbnail:p.thumbnail,file:p.file,kind:['image/tiff','image/bmp'].includes(p.mime)?'scan':'image'}];
 const preferredVersion = p => photoVersions(p).find(v=>v.kind===($('#version-view')?.value||'finished'))||photoVersions(p)[0];
 const imageUrl = p => p.rotation ? `/api/rolls/${library.rolls.find(r=>r.photos.some(f=>f.id===p.id))?.id}/photos/${p.id}/thumbnail?version=${preferredVersion(p).id}&rotation=${p.rotation}` : '/photos/' + (preferredVersion(p).thumbnail || p.thumbnail || p.file);
+const rollNavigation=setupRollNavigation({getRolls:()=>library.rolls,getCurrent:current,openRoll,imageUrl,isBusy:()=>uploadBusy});
 const date = d => d ? d.replaceAll('-', '.') : '未记录';
 const period = r => r.shotStart || r.shotEnd ? `${date(r.shotStart)} — ${date(r.shotEnd)}` : '拍摄时间未记录';
 let toastTimer;
@@ -34,9 +36,10 @@ function renderLibrary() {
   $('#library-empty').hidden = library.rolls.length > 0;
   if (library.rolls.length && !rolls.length) $('#roll-grid').innerHTML = '<p class="muted">没有匹配的胶卷。试试其他关键词或分类。</p>';
   for (const key of ['camera', 'film']) $('#' + key + '-options').innerHTML = [...new Set(library.rolls.map(r => r[key]).filter(Boolean))].map(v => `<option value="${esc(v)}"></option>`).join('');
+  rollNavigation.render();
 }
-function showLibrary() { stopFilm(); currentId = null; $('#detail-view').hidden = true; $('#library-view').hidden = false; $('#breadcrumb').textContent = '全部胶卷'; }
-function openRoll(id) { currentId = id; $('#library-view').hidden = true; $('#detail-view').hidden = false; $('#star-filter').checked = false; if(!uploadBusy)$('#import-progress').hidden=true; setView('grid'); renderDetail(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function showLibrary() { stopFilm(); currentId = null; $('#detail-view').hidden = true; $('#library-view').hidden = false; $('#breadcrumb').textContent = '全部胶卷'; rollNavigation.render(); }
+function openRoll(id) { if(!library.rolls.some(r=>r.id===id))return;if(uploadBusy&&id!==currentId)return toast('照片正在导入，完成后即可切换胶卷。');currentId = id; $('#library-view').hidden = true; $('#detail-view').hidden = false; $('#star-filter').checked = false; if(!uploadBusy)$('#import-progress').hidden=true; setView('grid'); renderDetail(); rollNavigation.render({revealCurrent:true}); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 function visiblePhotos() { return current()?.photos.filter(p => !$('#star-filter').checked || p.starred) || []; }
 function renderArchiveLabels(r) {
   $('#breadcrumb').textContent=r.title;$('#roll-number').textContent=`ROLL № ${r.number} / ${r.format||'规格待补全'}`;
@@ -46,6 +49,7 @@ function renderArchiveLabels(r) {
 function renderDetail() {
   const r = current(); if (!r) return;
   renderArchiveLabels(r);inlineArchive.render(r);
+  rollNavigation.render();
   $('#roll-meta').textContent=r.sourceFolder?`${r.storageMode==='reference'?'引用原目录，请保留原文件夹':'原图已复制到光匣'} · ${r.sourceFolder}`:'';
   renderPhotos(); $('#export-sheet').disabled = !r.photos.length || uploadBusy; $('#orientation-check').disabled = !r.photos.length || uploadBusy; $('#orientation-check').textContent=automaticOrientation?'自动方向识别':'方向核对';
 }
@@ -117,6 +121,7 @@ async function importPhotos(files) {
   const rollId = currentId; const ignored=[...files].filter(f=>f.name.startsWith('.')||/\.thm$/i.test(f.name)).length;const sorted = [...files].filter(f=>!f.name.startsWith('.')&&!/\.thm$/i.test(f.name)).sort((a,b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true }));
   if(!sorted.length)return toast('没有可导入的照片，THM 和隐藏文件已忽略。');
   uploadBusy = true; $('#import-progress').hidden = false; $('#progress-bar').value = 0;
+  rollNavigation.render();
   $('#import-photos').disabled = true; $('#empty-import').disabled = true; $('#export-sheet').disabled = true; $('#delete-roll').disabled = true;
   let completed = 0; const errors = []; let thumbsFailed = 0;
   for (let i=0; i<sorted.length; i++) {
@@ -132,6 +137,7 @@ async function importPhotos(files) {
     $('#progress-bar').value = ((i+1)/sorted.length)*100;
   }
   uploadBusy = false; $('#import-photos').disabled = false; $('#empty-import').disabled = false; $('#delete-roll').disabled = false;
+  rollNavigation.render();
   try { await refresh(); } catch (e) { toast(e.message); }
   $('#import-progress').hidden = true; $('#photo-input').value = '';
   if (errors.length) { $('#progress-label').textContent = `已导入 ${completed} 张；${errors.length} 张未导入。${errors.slice(0,4).join('；')}`; $('#import-progress').hidden = false; }
