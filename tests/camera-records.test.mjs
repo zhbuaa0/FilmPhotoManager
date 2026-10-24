@@ -24,6 +24,7 @@ test('参考图匹配正确机身与 STM 镜头，变焦 U2 和数码 EOS 300D �
   assert.deepEqual(cameraPhotos(cameraPresets[1]).map(p=>p.key),['canon-kiss-iii','canon-ef-50-stm']);
   assert.equal(cameraPhotos({...cameraPresets[1],lens:'EF 50mm f/1.8 II'}).length,1);
   assert.equal(inferCameraPhoto({...cameraPresets[0],model:'mju-II Zoom 80'}),'');
+  assert.equal(inferCameraPhoto({...cameraPresets[0],model:'mju-III'}),'');
   assert.equal(inferCameraPhoto({model:'EOS 300D'}),'');assert.equal(inferCameraPhoto({model:'EOS Kiss III L'}),'');
   assert.deepEqual(cameraPhotos({...cameraPresets[0],photoChoice:'none'}),[]);
   assert.deepEqual(cameraPhotos({photoChoice:'custom',photo:'../../library.json'}),[]);
