@@ -130,7 +130,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/api/library') return json(res, 200, library);
     if(req.method==='POST'&&url.pathname==='/api/folder/inspect'){
       const input=JSON.parse(await body(req)),plan=inspectFolder(input.path,{includeAggregates:input.includeAggregates===true});
-      return json(res,200,{root:plan.root,frames:plan.frames,versions:plan.versions,bytes:plan.bytes,ignored:plan.ignored,warnings:plan.warnings,rolls:plan.rolls.map(r=>({label:r.label,number:r.number,notes:r.notes,frames:r.frames.length,paired:r.paired,tiffs:r.tiffs,bytes:r.bytes}))});
+      return json(res,200,{root:plan.root,frames:plan.frames,versions:plan.versions,bytes:plan.bytes,ignored:plan.ignored,duplicates:plan.duplicates,warnings:plan.warnings,rolls:plan.rolls.map(r=>({label:r.label,number:r.number,notes:r.notes,frames:r.frames.length,paired:r.paired,tiffs:r.tiffs,bytes:r.bytes}))});
     }
     if(req.method==='POST'&&url.pathname==='/api/folder/import'){
       if([...jobs.values()].some(j=>j.status==='running'))return json(res,409,{error:'已有文件夹正在导入，请等待完成。'});

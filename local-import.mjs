@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { makePreview } from './image-preview.mjs';
+import { findExactDuplicates } from './duplicate-files.mjs';
 export { makePreview };
 export const natural = (a,b) => a.localeCompare(b,'zh-CN',{numeric:true});
 const formats = new Set(['.tif','.tiff','.bmp','.jpg','.jpeg','.png','.webp','.gif']);
@@ -60,9 +61,12 @@ export function inspectFolder(input, { includeAggregates=false }={}) {
   if(hasImages&&multiple)warnings.push('已按胶卷子目录拆卷，根目录散图/拼图未导入；需要时可单独上传。');
   const indexFile=path.join(root,'film_index.csv');
   const indexRows=fs.existsSync(indexFile)?csvRows(fs.readFileSync(indexFile,'utf8').replace(/^\uFEFF/,'')):[];
-  const rolls=[];let ignored=folders.includes(root)?0:immediate.filter(e=>e.isFile()).length;
+  const rolls=[];let duplicates=0,ignored=folders.includes(root)?0:immediate.filter(e=>e.isFile()).length;
   for(const folder of folders) {
-    const files=walk(folder), images=files.filter(f=>formats.has(path.extname(f).toLowerCase()));
+    const files=walk(folder), candidates=files.filter(f=>formats.has(path.extname(f).toLowerCase()));
+    const repeated=findExactDuplicates(candidates),excluded=new Set(repeated.map(item=>item.file));
+    duplicates+=repeated.length;
+    const images=candidates.filter(file=>!excluded.has(file));
     ignored+=files.filter(f=>!formats.has(path.extname(f).toLowerCase())).length;
     if(!images.length)continue;
     const originals=images.filter(isScan), others=images.filter(f=>!isScan(f));
@@ -99,5 +103,6 @@ export function inspectFolder(input, { includeAggregates=false }={}) {
   }
   const nonempty=rolls.filter(r=>r.frames.length);
   const numbers=new Set();for(const roll of nonempty){if(numbers.has(roll.number))throw new Error(`多个目录使用同一胶卷编号 ${roll.number}，请分别导入或调整目录名称。`);numbers.add(roll.number);}
-  return {root,rolls:nonempty,ignored,warnings,frames:nonempty.reduce((n,r)=>n+r.frames.length,0),versions:nonempty.reduce((n,r)=>n+r.frames.reduce((sum,f)=>sum+f.variants.length,0),0),bytes:nonempty.reduce((n,r)=>n+r.bytes,0)};
+  if(duplicates)warnings.push(`已通过完整文件 SHA-256 校验跳过 ${duplicates} 个完全相同的副本，源文件保留；内容不同的成片版本仍会导入。`);
+  return {root,rolls:nonempty,ignored,duplicates,warnings,frames:nonempty.reduce((n,r)=>n+r.frames.length,0),versions:nonempty.reduce((n,r)=>n+r.frames.reduce((sum,f)=>sum+f.variants.length,0),0),bytes:nonempty.reduce((n,r)=>n+r.bytes,0)};
 }

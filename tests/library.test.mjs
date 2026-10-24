@@ -83,12 +83,13 @@ test('胶卷档案、原图、帧序和磁盘恢复', async t => {
 test('TIFF 文件夹、XMP 成片关联、重复导入和源文件保护',async t=>{
   const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'lightbox-source-')),folder=path.join(fixture,'00001234');fs.mkdirSync(path.join(folder,'成片'),{recursive:true});
   const tiff=Buffer.from('SUkqAAgAAAAKAAABBAABAAAACAAAAAEBBAABAAAACAAAAAIBAwADAAAAhgAAAAMBAwABAAAAAQAAAAYBAwABAAAAAgAAABEBBAABAAAAjAAAABUBAwABAAAAAwAAABYBBAABAAAACAAAABcBBAABAAAAwAAAABwBAwABAAAAAQAAAAAAAAAIAAgACABablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablBablA=','base64');
-  const first=path.join(folder,'000012340001.TIF'),second=path.join(folder,'000012340002.TIF'),finished=path.join(folder,'成片','名称不同的成片.jpg');fs.writeFileSync(first,tiff);fs.writeFileSync(second,tiff);fs.writeFileSync(path.join(folder,'辅助.thm'),'ignored');
+  const secondTiff=Buffer.from(tiff);secondTiff[secondTiff.length-1]^=1;
+  const first=path.join(folder,'000012340001.TIF'),second=path.join(folder,'000012340002.TIF'),finished=path.join(folder,'成片','名称不同的成片.jpg');fs.writeFileSync(first,tiff);fs.writeFileSync(second,secondTiff);fs.writeFileSync(path.join(folder,'000012340001 - 副本.jpg'),tiff);fs.writeFileSync(path.join(folder,'辅助.thm'),'ignored');
   await makePreview(second,finished);
   const previewSize=await sharp(finished).metadata();
   assert.equal(previewSize.width,8);assert.equal(previewSize.height,8);
   const jpg=fs.readFileSync(finished),xmp=Buffer.from('http://ns.adobe.com/xap/1.0/\0<x:xmpmeta xmpMM:PreservedFileName="000012340002.tif"/>'),length=Buffer.alloc(2);length.writeUInt16BE(xmp.length+2);fs.writeFileSync(finished,Buffer.concat([jpg.subarray(0,2),Buffer.from([255,225]),length,xmp,jpg.subarray(2)]));
-  const plan=inspectFolder(fixture);assert.equal(plan.frames,2);assert.equal(plan.versions,3);assert.equal(plan.ignored,1);assert.equal(plan.rolls[0].paired,1);
+  const plan=inspectFolder(fixture);assert.equal(plan.frames,2);assert.equal(plan.versions,3);assert.equal(plan.ignored,1);assert.equal(plan.duplicates,1);assert.equal(plan.rolls[0].paired,1);
   await start();t.after(async()=>{if(process.exitCode===null)await stop();fs.rmSync(data,{recursive:true,force:true});fs.rmSync(fixture,{recursive:true,force:true});});
   async function importMode(mode){const result=await call('/api/folder/import','POST',{path:fixture,mode});assert.equal(result.status,202);for(let i=0;i<150;i++){const job=(await call('/api/imports/'+result.body.id)).body;if(job.status!=='running'){assert.equal(job.status,'complete');assert.deepEqual(job.errors,[]);return job;}await new Promise(r=>setTimeout(r,50));}throw new Error('导入未完成');}
   const initial=await importMode('reference');assert.equal(initial.importedFrames,2);assert.equal(initial.importedVersions,3);
@@ -104,5 +105,5 @@ test('TIFF 文件夹、XMP 成片关联、重复导入和源文件保护',async 
   const upgraded=await importMode('copy');assert.equal(upgraded.importedFrames,0);assert.equal(upgraded.copiedFiles,3);assert.equal((await call('/api/library')).body.rolls[0].photos.length,2);assert.equal((await call('/api/library')).body.rolls[0].storageMode,'copy');
   await call(`/api/rolls/${roll.id}`,'DELETE');assert.deepEqual(fs.readFileSync(first),tiff);assert.ok(fs.existsSync(finished));
   const copy=await importMode('copy');assert.equal(copy.importedFrames,2);roll=(await call('/api/library')).body.rolls[0];assert.ok(roll.photos.flatMap(p=>p.versions).every(v=>v.file&&!v.source));
-  await call(`/api/rolls/${roll.id}`,'DELETE');assert.deepEqual(fs.readFileSync(first),tiff);assert.deepEqual(fs.readFileSync(second),tiff);assert.ok(fs.existsSync(finished));
+  await call(`/api/rolls/${roll.id}`,'DELETE');assert.deepEqual(fs.readFileSync(first),tiff);assert.deepEqual(fs.readFileSync(second),secondTiff);assert.ok(fs.existsSync(finished));
 });
