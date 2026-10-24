@@ -1,6 +1,6 @@
 # 光匣 · FilmPhotoManager
 
-按胶卷整理冲洗后的电子照片，在本机浏览、归档和打印整卷接触印样。当前版本 **1.5.0**。
+按胶卷整理冲洗后的电子照片，在本机浏览、归档和打印整卷接触印样。当前版本 **1.6.0**。
 
 ## 界面与预览
 
@@ -35,7 +35,7 @@
 
 ## 快速开始
 
-支持 **Windows 10 / 11、macOS 和 Linux**，需要 **Node.js 20.9 或更新版本**。首次运行执行 `npm ci` 安装 Sharp 图像引擎和 BMP 解码器；TIFF / BMP 的浏览预览、旋转、文件夹导入均在本机完成。macOS 可额外使用 Vision 自动识别人脸和文字方向；Windows / Linux 提供手动方向核对、批量应用与撤销。
+支持 **Windows 10 / 11、macOS 和 Linux**，需要 **Node.js 20.9 或更新版本**。首次运行执行 `npm ci` 安装图像引擎、BMP 解码器及离线中英文 OCR 模型；TIFF / BMP 的浏览预览、旋转、文件夹导入均在本机完成。Windows 使用系统人脸检测和 Tesseract 离线 OCR 比较四个方向；macOS 使用 Vision 自动识别人脸和文字方向。Linux 提供手动方向核对。各平台均支持批量应用与撤销。
 
 ```bash
 git clone https://github.com/zhbuaa0/FilmPhotoManager.git
@@ -56,7 +56,7 @@ npm start
 - **卷间快速切换**：详情页左侧提供带封面的胶卷目录、搜索、当前卷高亮与上一卷 / 下一卷；窄窗口提供固定的跳转栏。
 - **照片浏览**：接触印样网格、放大查看、星标精选、拖动帧序、手动旋转及原图下载。
 - **连续胶片条**：带连续齿孔、卷头卷尾和帧号，支持拖动、滚轮、触屏、键盘、定位滑杆与自动走片。
-- **本机方向识别**：按人脸和文字朝向给出旋转建议，提供前后对照、待确认筛选、批量应用、手动方向保护和撤销；照片不上传，原文件不改写。包含 Apple 芯片 Mac 可执行文件，其他架构首次使用需 Apple 命令行开发工具编译。
+- **本机方向识别**：按人脸和文字朝向给出旋转建议，提供前后对照、待确认筛选、批量应用、手动方向保护和撤销；照片不上传，原文件不改写。Windows 10 / 11 通过系统 Windows PowerShell 调用 FaceDetector，并用带置信度的离线中英文 OCR 验证文字方向；无需 Python，系统人脸检测不可用时明确降级为文字识别。Apple 芯片 Mac 使用随附引擎，其他 Mac 架构首次使用需 Apple 命令行开发工具编译。
 - **打印预览**：整卷 PNG 接触印样，横向 3:2（3600 × 2400）、横向 16:9（3840 × 2160）及按内容自动适配，照片完整显示。
 
 完整操作、导入和备份说明见 [使用说明](使用说明.md)。
@@ -84,7 +84,7 @@ npm start
 npm test
 ```
 
-检查覆盖档案保存恢复、文件夹导入、XMP 关联、源文件保护、方向建议及撤销、打印布局。图像检查使用跨平台引擎，可在 Windows 上完整运行。GitHub Actions 同时验证 Windows、macOS 和 Linux。
+检查覆盖档案保存恢复、文件夹导入、XMP 关联、源文件保护、四方向实际 OCR、EXIF 朝向、证据冲突与撤销、打印布局。图像检查使用跨平台引擎，可在 Windows 上完整运行。GitHub Actions 同时验证 Windows、macOS 和 Linux。
 
 ```text
 server.mjs              本机 HTTP 服务和档案保存
@@ -94,7 +94,9 @@ launcher.mjs            自动打开浏览器并复用本机服务
 local-import.mjs        文件夹检查、照片关联和导入
 orientation.mjs         方向判断、应用与撤销
 public/                 页面、样式、交互和打印排版
-native/                 macOS Vision 引擎源码及 Apple 芯片程序
+orientation-text.mjs    离线中英文 OCR 与文字置信度
+orientation-windows.mjs Windows 人脸适配和证据判断
+native/                 Windows FaceDetector 脚本、macOS Vision 引擎
 tests/                  自动检查
 使用说明.md             操作与备份说明
 打开光匣.command         Mac 启动入口

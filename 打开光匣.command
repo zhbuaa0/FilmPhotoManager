@@ -6,7 +6,7 @@ if ! command -v node >/dev/null 2>&1; then
   read -k 1
   exit 1
 fi
-if [ ! -f node_modules/sharp/package.json ]; then
+if ! node -e "for (const name of ['sharp','bmp-js','tesseract.js','@tesseract.js-data/eng','@tesseract.js-data/chi_sim']) require.resolve(name)" >/dev/null 2>&1; then
   npm ci || exit 1
 fi
 node launcher.mjs

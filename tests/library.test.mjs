@@ -81,6 +81,7 @@ test('胶卷档案、原图、帧序和磁盘恢复', async t => {
   }
   assert.equal((await fetch(base+`/api/rolls/${id}/preview?format=unknown`,{method:'POST',body:png})).status,400);
   const scan=await call(`/api/rolls/${id}/orientation`,'POST',{version:'finished'});assert.equal(scan.status,202);
+  assert.equal(scan.body.engineId,(await call('/api/capabilities')).body.engineId);
   let check;
   for(let i=0;i<400;i++){check=(await call(`/api/rolls/${id}/orientation`)).body;if(check.status!=='running')break;await new Promise(r=>setTimeout(r,50));}
   assert.equal(check.status,'complete');assert.equal(check.processed,1);

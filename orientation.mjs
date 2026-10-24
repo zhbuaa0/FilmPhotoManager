@@ -3,6 +3,10 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
+import sharp from 'sharp';
+import { createTextDetector } from './orientation-text.mjs';
+import { windowsEngineId, windowsFaceCapabilities, detectWindowsFaces, classifyLocalOrientation } from './orientation-windows.mjs';
 const execute=promisify(execFile),root=path.dirname(fileURLToPath(import.meta.url));
 let preparing;
 export function classifyOrientation(candidates) {
@@ -17,8 +21,7 @@ export function classifyOrientation(candidates) {
   }
   return best.faces>0?{...unknown,reason:'人脸朝向倾斜或不同人物方向不一致，请手动确认。'}:unknown;
 }
-export async function detectOrientation(file,dataDir) {
-  if(process.platform!=='darwin')return {angle:null,reliable:false,method:'manual',reason:'此平台暂不支持自动人脸与文字识别，请对照预览手动选择方向。'};
+async function detectMacOrientation(file,dataDir) {
   const bundled=path.join(root,'native',`orientation-${process.arch}`),cached=path.join(dataDir,'tools',`orientation-${process.arch}`);
   let binary=fs.existsSync(bundled)?bundled:cached;
   if(!fs.existsSync(binary)) {
@@ -30,6 +33,42 @@ export async function detectOrientation(file,dataDir) {
   try{output=await execute(binary,[file],{timeout:60000,maxBuffer:1024*1024});}catch{throw new Error('本机视觉引擎未能读取这张照片，方向保持不变。');}
   const result=JSON.parse(output.stdout.trim());if(result.error)throw new Error('本机方向检测失败，方向保持不变。');
   return classifyOrientation(result.candidates);
+}
+export async function getOrientationCapabilities() {
+  if(process.platform==='darwin')return {platform:process.platform,automaticOrientation:true,engineId:'apple-vision-v1',engineLabel:'Apple Vision · 人脸与文字',face:true,text:true};
+  if(process.platform==='win32') {
+    const {face}=await windowsFaceCapabilities();
+    return {platform:process.platform,automaticOrientation:true,engineId:windowsEngineId,engineLabel:face?'Windows 人脸检测 + 离线中英文 OCR':'离线中英文 OCR · 系统人脸检测不可用',face,text:true};
+  }
+  return {platform:process.platform,automaticOrientation:false,engineId:'manual-v1',engineLabel:'手动方向核对',face:false,text:false};
+}
+// One OCR worker per roll, always released by the caller, including failed scans.
+export function createOrientationDetector(dataDir) {
+  const text=process.platform==='win32'?createTextDetector(dataDir):null;
+  return {
+    async detect(file) {
+      if(process.platform==='darwin')return detectMacOrientation(file,dataDir);
+      if(!text)return {angle:null,reliable:false,method:'manual',reason:'此平台暂不支持自动人脸与文字识别，请对照预览手动选择方向。'};
+      const meta=await sharp(file).metadata();
+      if(Math.min(meta.width||0,meta.height||0)<48)return {angle:null,reliable:false,method:'unknown',reason:'预览尺寸太小，无法可靠判断方向，请手动确认。'};
+      const tools=path.join(dataDir,'tools');fs.mkdirSync(tools,{recursive:true});
+      const normalized=path.join(tools,`orientation-${randomUUID()}.png`);
+      try {
+        // Both engines see the same EXIF-normalized pixels as the browser preview.
+        await sharp(file).autoOrient().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true}).png().toFile(normalized);
+        const [faceResult,textResult]=await Promise.allSettled([detectWindowsFaces(normalized),text.analyze(normalized)]);
+        if(textResult.status==='rejected')throw textResult.reason;
+        const faces=faceResult.status==='fulfilled'?faceResult.value:{candidates:[],faceAvailable:false};
+        const candidates=textResult.value.map(c=>({...c,...faces.candidates.find(f=>f.angle===c.angle)}));
+        return classifyLocalOrientation(candidates,{faceAvailable:faces.faceAvailable});
+      } finally {fs.rmSync(normalized,{force:true});}
+    },
+    async close(){await text?.close();}
+  };
+}
+export async function detectOrientation(file,dataDir) {
+  const detector=createOrientationDetector(dataDir);
+  try{return await detector.detect(file);}finally{await detector.close();}
 }
 export function applyOrientationDecisions(roll,decisions,scanId) {
   if(!Array.isArray(decisions)||!decisions.length)throw new Error('请先勾选要调整的照片。');

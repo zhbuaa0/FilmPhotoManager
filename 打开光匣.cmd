@@ -7,7 +7,8 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-if not exist "node_modules\sharp\package.json" (
+node -e "for (const name of ['sharp','bmp-js','tesseract.js','@tesseract.js-data/eng','@tesseract.js-data/chi_sim']) require.resolve(name)" >nul 2>nul
+if errorlevel 1 (
   call npm ci
   if errorlevel 1 (
     pause

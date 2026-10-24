@@ -68,7 +68,7 @@ export function setupOrientation({getCurrent,getVersions,refresh,toast,stopFilm}
     updateSelection();
     $('#orientation-filter').value='attention';$('#orientation-error').textContent='';$('#orientation-results').replaceChildren();$('#orientation-review').hidden=true;
     $('#orientation-status').textContent='准备方向检查…';$('#orientation-apply').disabled=true;$('#orientation-undo').disabled=!r.orientationUndo;dialog.showModal();
-    try {scan=await request(endpoint());if(!dialog.open)return;const cached=scan?.status==='complete'&&scan.version===$('#version-view').value&&r.photos.every(p=>p.orientationCheck?.scanId===scan.id);if(cached||scan?.status==='running')await followScan();else await startScan();}
+    try {const capabilities=await request('/api/capabilities');$('#orientation-engine').textContent=`本机引擎：${capabilities.engineLabel}`;scan=await request(endpoint());if(!dialog.open)return;const cached=scan?.status==='complete'&&scan.engineId===capabilities.engineId&&scan.version===$('#version-view').value&&r.photos.every(p=>p.orientationCheck?.scanId===scan.id);if(cached||scan?.status==='running')await followScan();else await startScan();}
     catch(e){$('#orientation-error').textContent=e.message;}
   };
   $('#orientation-filter').onchange=renderResults;

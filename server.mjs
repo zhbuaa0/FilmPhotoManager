@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { inspectFolder, makePreview, mimeFor } from './local-import.mjs';
-import { detectOrientation, applyOrientationDecisions, undoOrientationDecisions } from './orientation.mjs';
+import { createOrientationDetector, getOrientationCapabilities, applyOrientationDecisions, undoOrientationDecisions } from './orientation.mjs';
 import { cameraMetadata, resolveRollCamera } from './camera-records.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -59,18 +59,21 @@ const orientationJobs = new Map();
 for (const roll of library.rolls) if (roll.orientationScan?.status === 'running') { roll.orientationScan.status='interrupted'; save(); }
 const versionsOf=p=>p.versions?.length?p.versions:[{id:p.id,name:p.name,mime:p.mime,bytes:p.bytes,file:p.file,thumbnail:p.thumbnail,kind:['image/tiff','image/bmp'].includes(p.mime)?'scan':'image'}];
 async function scanOrientation(roll,job,preference) {
+  const detector=createOrientationDetector(dataDir);
+  try {
   const photos=[...roll.photos];
   for (const photo of photos) {
     if (!library.rolls.includes(roll)) { job.status='cancelled'; return; }
     job.current=photo.name;
     const version=versionsOf(photo).find(v=>v.kind===preference)||versionsOf(photo)[0];
     let result;
-    try { result=await detectOrientation(path.join(dataDir,'photos',version.thumbnail||photo.thumbnail||version.file),dataDir); }
+    try { result=await detector.detect(path.join(dataDir,'photos',version.thumbnail||photo.thumbnail||version.file)); }
     catch(e) { result={angle:null,reliable:false,method:'unknown',reason:e.message,error:true}; job.errors.push(photo.name); }
     if(roll.photos.includes(photo))photo.orientationCheck={...result,scanId:job.id,versionId:version.id,checkedAt:new Date().toISOString()};
     job.processed++; save();
   }
   job.status='complete';job.current='';job.completedAt=new Date().toISOString();save();
+  } finally {await detector.close();}
 }
 const ownedFiles=p=>[...new Set([p.file,p.thumbnail,p.display,...versionsOf(p).flatMap(v=>[v.file,v.thumbnail,v.display,`${v.id}-view.jpg`,...[90,180,270].flatMap(r=>[`${v.id}-r${r}-thumb.jpg`,`${v.id}-r${r}-view.jpg`])])].filter(Boolean))];
 function fileResponse(res,file,mime,name) {
@@ -129,7 +132,7 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
     const parts = url.pathname.split('/').filter(Boolean);
-    if(req.method==='GET'&&url.pathname==='/api/capabilities')return json(res,200,{platform:process.platform,automaticOrientation:process.platform==='darwin'});
+    if(req.method==='GET'&&url.pathname==='/api/capabilities')return json(res,200,await getOrientationCapabilities());
     if (req.method === 'GET' && url.pathname === '/api/library') return json(res, 200, library);
     if(url.pathname==='/api/cameras'&&req.method==='GET')return json(res,200,library.cameras);
     if(url.pathname==='/api/cameras'&&req.method==='POST'){
@@ -175,11 +178,12 @@ const server = http.createServer(async (req, res) => {
       if (parts[3] === 'orientation') {
         if(parts.length===4&&req.method==='GET')return json(res,200,roll.orientationScan||null);
         if(parts.length===4&&req.method==='POST') {
+          const input=JSON.parse(await body(req));if(!['finished','scan'].includes(input.version))throw new Error('请选择识别的照片版本。');
+          const capabilities=await getOrientationCapabilities();
           const running=[...orientationJobs.values()].find(j=>j.status==='running');
           if(running)return running.rollId===roll.id?json(res,202,running):json(res,409,{error:'另一卷正在识别方向，请稍后再试。'});
           if(!roll.photos.length)throw new Error('请先导入这一卷的照片。');
-          const input=JSON.parse(await body(req));if(!['finished','scan'].includes(input.version))throw new Error('请选择识别的照片版本。');
-          const job={id:randomUUID(),rollId:roll.id,version:input.version,status:'running',total:roll.photos.length,processed:0,current:'正在准备本机识别引擎',errors:[],startedAt:new Date().toISOString()};
+          const job={id:randomUUID(),rollId:roll.id,version:input.version,engineId:capabilities.engineId,engineLabel:capabilities.engineLabel,status:'running',total:roll.photos.length,processed:0,current:'正在准备本机识别引擎',errors:[],startedAt:new Date().toISOString()};
           orientationJobs.set(roll.id,job);roll.orientationScan=job;save();void scanOrientation(roll,job,input.version).catch(()=>{job.status='failed';job.current='识别中断，请重新识别。';save();});
           return json(res,202,job);
         }
