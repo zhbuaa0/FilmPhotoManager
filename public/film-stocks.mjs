@@ -1048,6 +1048,38 @@ export const filmStocks=[
     "checkedAt": "2026-10-24"
   },
   {
+    "id": "lucky-c200",
+    "brand": "Lucky",
+    "model": "C200",
+    "name": "Lucky C200",
+    "iso": 200,
+    "kind": "color",
+    "process": "C-41",
+    "formats": [
+      "135",
+      "120"
+    ],
+    "aliases": [
+      "乐凯200",
+      "乐凯C200",
+      "乐凯彩色200",
+      "樂凱C200",
+      "Lucky200"
+    ],
+    "source": "https://luckyfilm.net/",
+    "sourceLabel": "Lucky Film 产品资料",
+    "additionalSources": [
+      "https://www.lucky.cn/",
+      "https://www.spacechina.com/n25/n2014789/n2014809/c4661581/content.html"
+    ],
+    "imageUrl": "https://shop.shjcfilm.com/cdn/shop/files/135.png?v=1760518890&width=700",
+    "imageSource": "https://shop.shjcfilm.com/products/lucky-color-200-color-negative-film-35mm",
+    "imageSourceLabel": "上海简成胶片产品图",
+    "imageCredit": "产品参考图，版权归原权利人所有。",
+    "note": "复产的 C200 彩色负片，标注 ISO 200、C-41；图为 135 规格 36 张包装，120 规格的张数随画幅变化。",
+    "checkedAt": "2026-10-24"
+  },
+  {
     "id": "fuji-c200",
     "brand": "Fujifilm",
     "model": "Fujicolor C200",

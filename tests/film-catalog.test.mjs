@@ -11,7 +11,10 @@ test('胶卷型号库区分同感光度产品、中文别名、XP2 工艺、规�
   for(const f of filmStocks){assert.match(f.id,/^[a-z0-9-]+$/);assert.ok(f.formats.length);assert.ok(f.iso>0);assert.equal(new URL(f.imageUrl).protocol,'https:');assert.equal(new URL(f.source).protocol,'https:');}
   assert.equal(findFilmStock('柯达金200').id,'kodak-gold-200');assert.equal(findFilmStock('Portra400').id,'kodak-portra-400');
   assert.notEqual(findFilmStock('Fujicolor C200').id,findFilmStock('Fujifilm 200').id);
-  assert.equal(findFilmStock('Ilford XP2 Super 400').process,'C-41');assert.equal(findFilmStock('乐凯200'),null);
+  assert.equal(findFilmStock('Ilford XP2 Super 400').process,'C-41');assert.equal(findFilmStock('乐凯200').id,'lucky-c200');
+  assert.equal(findFilmStock('乐凯C200').id,'lucky-c200');assert.equal(findFilmStock('C200'),null);
+  assert.equal(findFilmStock('Fujicolor C200').id,'fuji-c200');assert.equal(findFilmStock('Lucky C200').process,'C-41');
+  assert.deepEqual(filterFilmStocks({brand:'Lucky',kind:'color',iso:'200'}).map(f=>f.id),['lucky-c200']);
   assert.equal(findFilmStock('柯达400'),null);assert.equal(findFilmStock('富士业务400'),null);assert.equal(findFilmStock('5222'),null);
   assert.equal(filterFilmStocks({query:'富士 400',kind:'color'}).some(f=>f.brand==='Fujifilm'),true);
   assert.ok(filterFilmStocks({kind:'slide'}).every(f=>f.process==='E-6'));
@@ -21,6 +24,7 @@ test('胶卷型号库区分同感光度产品、中文别名、XP2 工艺、规�
 });
 test('选用只修改型号、规格与用户同意的 ISO，支持保留迫冲等手填感光度',()=>{
   assert.deepEqual(filmSelection('kodak-portra-400',{format:'135',iso:'400'}),{film:'Kodak Portra 400',format:'135',iso:'400'});
+  assert.deepEqual(filmSelection('lucky-c200',{format:'135',iso:'200'}),{film:'Lucky C200',format:'135',iso:'200'});
   assert.deepEqual(filmSelection('kodak-portra-400',{format:'120',fillIso:false}),{film:'Kodak Portra 400',format:'120'});
   assert.deepEqual(filmSelection('lomo-purple',{format:'110',iso:'200'}),{film:'Lomography LomoChrome Purple',format:'110',iso:'200'});
   assert.throws(()=>filmSelection('kodak-gold-200',{format:'110',iso:200}),/规格/);

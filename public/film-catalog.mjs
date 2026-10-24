@@ -5,7 +5,8 @@ export const filmBrands={Kodak:'柯达',Fujifilm:'富士',Ilford:'伊尔福',Ken
 const normalize=value=>String(value||'').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
 export function findFilmStock(name) {
   const value=normalize(name);if(!value)return null;
-  return filmStocks.find(f=>[f.name,f.model,`${filmBrands[f.brand]||f.brand}${f.model}`,...f.aliases].some(alias=>normalize(alias)===value))||null;
+  const matches=filmStocks.filter(f=>[f.name,f.model,`${filmBrands[f.brand]||f.brand}${f.model}`,...f.aliases].some(alias=>normalize(alias)===value));
+  return matches.length===1?matches[0]:null;
 }
 export function filterFilmStocks({query='',brand='',kind='',format='',iso=''}={}) {
   const terms=String(query).trim().split(/\s+/).map(normalize).filter(Boolean);
