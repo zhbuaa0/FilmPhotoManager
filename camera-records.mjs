@@ -1,3 +1,4 @@
+import {cameraPhotoReferences} from './public/camera-photos.mjs';
 export const cameraFields=['name','brand','model','type','lens','format','mount','focalLength','aperture','shutter','focus','power','releaseYear','serial','purchasedAt','status','notes'];
 
 export function cameraMetadata(input,cameras,existingId) {
@@ -8,6 +9,8 @@ export function cameraMetadata(input,cameras,existingId) {
   if(result.releaseYear&&!/^\d{4}$/.test(result.releaseYear))throw new Error('上市年份请填写四位数字。');
   if(result.purchasedAt&&(!/^\d{4}-\d{2}-\d{2}$/.test(result.purchasedAt)||!Number.isFinite(Date.parse(result.purchasedAt))||new Date(result.purchasedAt).toISOString().slice(0,10)!==result.purchasedAt))throw new Error('请输入有效的购入日期。');
   result.status||='在用';
+  result.photoChoice=String(input.photoChoice||'auto');
+  if(!['auto','none','custom',...cameraPhotoReferences.map(p=>p.key)].includes(result.photoChoice))throw new Error('请选择有效的相机预览图。');
   const sources=Array.isArray(input.sources)?input.sources:String(input.sources??'').split(/\r?\n/);
   result.sources=[...new Set(sources.map(s=>String(s).trim()).filter(Boolean))];
   if(result.sources.length>8)throw new Error('资料来源最多登记 8 个链接。');

@@ -36,6 +36,11 @@ test('登记相机、胶卷关联、改名、磁盘恢复和移除后保留历�
   const legacy=await call('/api/rolls','POST',{title:'历史胶卷',number:'LEGACY',camera:'我的相机'});
   const spec={name:'我的相机',model:'EOS Kiss III',lens:'EF 50mm f/1.8 STM',format:'135',sources:['https://global.canon/en/c-museum/product/film214.html']};
   const created=await call('/api/cameras','POST',spec);assert.equal(created.status,201);const id=created.body.id;
+  const image=await sharp({create:{width:40,height:30,channels:3,background:'#ddaa66'}}).png().toBuffer();
+  const uploaded=await fetch(base+`/api/cameras/${id}/photo`,{method:'POST',body:image});assert.equal(uploaded.status,200);const cameraImage=(await uploaded.json()).photo;
+  const preview=await fetch(base+'/camera-images/'+cameraImage);assert.equal(preview.status,200);assert.equal(preview.headers.get('content-type'),'image/jpeg');assert.equal((await sharp(Buffer.from(await preview.arrayBuffer())).metadata()).width,40);
+  assert.equal((await fetch(base+`/api/cameras/${id}/photo`,{method:'POST',body:'not an image'})).status,400);
+  assert.equal((await fetch(base+`/api/cameras/missing/photo`,{method:'POST',body:image})).status,404);
   assert.equal((await call('/api/cameras','POST',spec)).status,400);
   const selected=await call('/api/rolls','POST',{title:'已选相机',number:'LINKED',camera:spec.name});assert.equal(selected.body.cameraId,id);
   const library=(await call('/api/library')).body;assert.equal(library.rolls.find(r=>r.id===legacy.body.id).cameraId,id);assert.equal(library.rolls.find(r=>r.id===unknown.body.id).camera,'');
@@ -43,6 +48,7 @@ test('登记相机、胶卷关联、改名、磁盘恢复和移除后保留历�
   assert.equal((await call('/api/cameras/'+id,'PUT',{...spec,name:'旅行相机'})).status,200);
   await stop();await start();
   const restored=(await call('/api/library')).body;assert.equal(restored.cameras.length,1);assert.equal(restored.cameras[0].name,'旅行相机');assert.equal(restored.rolls.find(r=>r.id===selected.body.id).camera,'旅行相机');
+  assert.equal(restored.cameras[0].photo,cameraImage);assert.equal(restored.cameras[0].photoChoice,'custom');assert.equal((await fetch(base+'/camera-images/'+cameraImage)).status,200);
   assert.equal((await call('/api/cameras/'+id,'DELETE')).status,200);
   const after=(await call('/api/library')).body;assert.equal(after.cameras.length,0);assert.equal(after.rolls.length,3);assert.equal(after.rolls.find(r=>r.id===selected.body.id).camera,'旅行相机');assert.equal(after.rolls.find(r=>r.id===selected.body.id).cameraId,'');
 });

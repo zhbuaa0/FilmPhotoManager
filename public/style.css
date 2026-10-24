@@ -70,6 +70,15 @@ body.viewing-roll{--side:284px}
 .camera-card{min-width:0;border:1px solid #3e4535;border-radius:8px;padding:26px;background:linear-gradient(145deg,#20261d,#151914)}
 .camera-card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
 .camera-drawing{width:115px;height:76px;color:#bba584}
+.camera-photo-kicker{font:10px ui-monospace,monospace;color:#a6b29a;letter-spacing:1px;padding-top:6px}
+.camera-photo-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin:0 0 25px}
+.camera-photo-grid.has-lens{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}
+.camera-photo-grid figure{margin:0;min-width:0}.camera-photo-link{display:block;border:1px solid #3e4535;border-radius:5px;background:#101310;overflow:hidden}
+.camera-photo-link img{display:block;width:100%;height:230px;object-fit:contain;transition:filter .2s}.camera-photo-link:hover img{filter:brightness(1.1)}
+.camera-photo-grid figcaption{font-size:10px;color:#c9c2ac;line-height:1.7;padding:9px 0 0;overflow-wrap:anywhere}.camera-photo-grid small{display:block;font-size:9px;color:#89947e;margin-top:4px}.camera-photo-grid small a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+.camera-photo-editor{padding:19px;border:1px solid #414a37;border-radius:6px;margin:22px 0;background:#171c15}.camera-photo-editor>label{display:flex;flex-direction:column;gap:9px;color:#b7c1a9;font-size:12px}.camera-photo-editor select{width:100%;background:#141912;color:var(--text);border:1px solid #49533c;border-radius:4px;padding:11px;min-width:0}
+.camera-photo-editor .camera-photo-grid{margin:18px 0}.camera-photo-editor img{height:190px}.camera-photo-editor>p{font-size:11px;line-height:1.8}.camera-photo-editor .secondary{font-size:12px;padding:10px 14px}
+@media(max-width:760px){.camera-photo-link img{height:180px}.camera-photo-editor{padding:14px}.camera-photo-grid.has-lens{gap:10px}.camera-photo-grid figcaption{font-size:9px}.camera-photo-editor select{font-size:16px}}
 .camera-drawing svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
 .camera-state{font-size:11px;padding:6px 10px;background:#333d2b;color:#c0cfb0;border-radius:4px}
 .camera-card .eyebrow{font-size:10px;margin-bottom:11px}

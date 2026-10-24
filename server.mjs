@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { inspectFolder, makePreview, mimeFor } from './local-import.mjs';
 import { createOrientationDetector, getOrientationCapabilities, applyOrientationDecisions, undoOrientationDecisions } from './orientation.mjs';
 import { cameraMetadata, resolveRollCamera } from './camera-records.mjs';
+import { saveCameraImage, cameraImageLimit } from './camera-images.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(process.env.LIGHTBOX_DATA_DIR || path.join(root, 'data'));
@@ -24,9 +25,9 @@ function json(res, code, body) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(body));
 }
-async function body(req, limit = 1024 * 1024) {
+async function body(req, limit = 1024 * 1024, tooLarge = '文件超过 80 MB，请先转换为较小的扫描文件。') {
   const chunks = []; let bytes = 0;
-  for await (const chunk of req) { bytes += chunk.length; if (bytes > limit) throw new Error('文件超过 80 MB，请先转换为较小的扫描文件。'); chunks.push(chunk); }
+  for await (const chunk of req) { bytes += chunk.length; if (bytes > limit) throw new Error(tooLarge); chunks.push(chunk); }
   return Buffer.concat(chunks);
 }
 const fields = ['title', 'number', 'camera', 'film', 'iso', 'format', 'loadedAt', 'shotStart', 'shotEnd', 'developedAt', 'lab', 'notes'];
@@ -141,10 +142,18 @@ const server = http.createServer(async (req, res) => {
       for(const roll of library.rolls)if(!roll.cameraId&&roll.camera===camera.name)roll.cameraId=camera.id;
       save();return json(res,201,camera);
     }
+    if(parts[0]==='api'&&parts[1]==='cameras'&&parts[3]==='photo'&&parts.length===4&&req.method==='POST'){
+      const camera=library.cameras.find(c=>c.id===parts[2]);if(!camera)return json(res,404,{error:'相机登记不存在。'});
+      const bytes=await body(req,cameraImageLimit,'相机照片不能超过 8 MB。');
+      const photo=await saveCameraImage(bytes,dataDir);
+      if(!library.cameras.includes(camera)){fs.rmSync(path.join(dataDir,'camera-images',photo),{force:true});return json(res,404,{error:'相机登记已移除。'});}
+      Object.assign(camera,{photo,photoChoice:'custom',updatedAt:new Date().toISOString()});save();return json(res,200,camera);
+    }
+    if(req.method==='GET'&&parts[0]==='camera-images'&&parts.length===2&&/^[a-f0-9-]+\.jpg$/.test(parts[1]))return fileResponse(res,path.join(dataDir,'camera-images',parts[1]),'image/jpeg');
     if(parts[0]==='api'&&parts[1]==='cameras'&&parts.length===3){
       const camera=library.cameras.find(c=>c.id===parts[2]);if(!camera)return json(res,404,{error:'相机登记不存在。'});
       if(req.method==='PUT'){
-        const previousName=camera.name,updated=cameraMetadata(JSON.parse(await body(req)),library.cameras,camera.id);
+        const input=JSON.parse(await body(req)),previousName=camera.name,updated=cameraMetadata({...input,photoChoice:input.photoChoice??camera.photoChoice},library.cameras,camera.id);
         Object.assign(camera,updated,{updatedAt:new Date().toISOString()});
         for(const roll of library.rolls)if(roll.cameraId===camera.id||(!roll.cameraId&&roll.camera===previousName)){roll.cameraId=camera.id;roll.camera=camera.name;}
         save();return json(res,200,camera);
