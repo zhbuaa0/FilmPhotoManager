@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { inspectFolder, makePreview, mimeFor } from './local-import.mjs';
 import { detectOrientation, applyOrientationDecisions, undoOrientationDecisions } from './orientation.mjs';
+import { cameraMetadata, resolveRollCamera } from './camera-records.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(process.env.LIGHTBOX_DATA_DIR || path.join(root, 'data'));
@@ -13,6 +14,7 @@ fs.mkdirSync(path.join(dataDir, 'photos'), { recursive: true });
 fs.mkdirSync(path.join(dataDir, 'previews'), { recursive: true });
 const indexFile = path.join(dataDir, 'library.json');
 let library = fs.existsSync(indexFile) ? JSON.parse(fs.readFileSync(indexFile, 'utf8')) : { version: 1, rolls: [] };
+library.cameras??=[];
 function save() {
   const tmp = indexFile + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(library, null, 2));
@@ -31,6 +33,7 @@ const fields = ['title', 'number', 'camera', 'film', 'iso', 'format', 'loadedAt'
 function metadata(input, existingId) {
   const result = {};
   for (const key of fields) result[key] = String(input[key] ?? '').trim().slice(0, key === 'notes' ? 4000 : 160);
+  Object.assign(result,resolveRollCamera(input,library.cameras));
   if (!result.title || !result.number) throw new Error('请填写胶卷名称和实物编号。');
   if (library.rolls.some(r => r.id !== existingId && r.number === result.number)) throw new Error('这个实物编号已经使用，请填写另一个编号。');
   for (const key of ['loadedAt', 'shotStart', 'shotEnd', 'developedAt']) {
@@ -128,6 +131,28 @@ const server = http.createServer(async (req, res) => {
     const parts = url.pathname.split('/').filter(Boolean);
     if(req.method==='GET'&&url.pathname==='/api/capabilities')return json(res,200,{platform:process.platform,automaticOrientation:process.platform==='darwin'});
     if (req.method === 'GET' && url.pathname === '/api/library') return json(res, 200, library);
+    if(url.pathname==='/api/cameras'&&req.method==='GET')return json(res,200,library.cameras);
+    if(url.pathname==='/api/cameras'&&req.method==='POST'){
+      const input=JSON.parse(await body(req)),camera={id:randomUUID(),...cameraMetadata(input,library.cameras),createdAt:new Date().toISOString()};
+      library.cameras.push(camera);
+      for(const roll of library.rolls)if(!roll.cameraId&&roll.camera===camera.name)roll.cameraId=camera.id;
+      save();return json(res,201,camera);
+    }
+    if(parts[0]==='api'&&parts[1]==='cameras'&&parts.length===3){
+      const camera=library.cameras.find(c=>c.id===parts[2]);if(!camera)return json(res,404,{error:'相机登记不存在。'});
+      if(req.method==='PUT'){
+        const previousName=camera.name,updated=cameraMetadata(JSON.parse(await body(req)),library.cameras,camera.id);
+        Object.assign(camera,updated,{updatedAt:new Date().toISOString()});
+        for(const roll of library.rolls)if(roll.cameraId===camera.id||(!roll.cameraId&&roll.camera===previousName)){roll.cameraId=camera.id;roll.camera=camera.name;}
+        save();return json(res,200,camera);
+      }
+      if(req.method==='DELETE'){
+        library.cameras=library.cameras.filter(c=>c.id!==camera.id);
+        for(const roll of library.rolls)if(roll.cameraId===camera.id)roll.cameraId='';
+        save();return json(res,200,{ok:true});
+      }
+      return json(res,405,{error:'相机登记不支持这个操作。'});
+    }
     if(req.method==='POST'&&url.pathname==='/api/folder/inspect'){
       const input=JSON.parse(await body(req)),plan=inspectFolder(input.path,{includeAggregates:input.includeAggregates===true});
       return json(res,200,{root:plan.root,frames:plan.frames,versions:plan.versions,bytes:plan.bytes,ignored:plan.ignored,duplicates:plan.duplicates,warnings:plan.warnings,rolls:plan.rolls.map(r=>({label:r.label,number:r.number,notes:r.notes,frames:r.frames.length,paired:r.paired,tiffs:r.tiffs,bytes:r.bytes}))});

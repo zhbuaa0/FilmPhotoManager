@@ -29,6 +29,24 @@ const call = async (route, method='GET', value) => {
   return { status: response.status, body: await response.json() };
 };
 
+test('登记相机、胶卷关联、改名、磁盘恢复和移除后保留历史文字',async t=>{
+  await start();t.after(async()=>{if(process.exitCode===null)await stop();fs.rmSync(data,{recursive:true,force:true});});
+  assert.deepEqual((await call('/api/cameras')).body,[]);
+  const unknown=await call('/api/rolls','POST',{title:'待确认胶卷',number:'UNKNOWN'});assert.equal(unknown.body.camera,'');
+  const legacy=await call('/api/rolls','POST',{title:'历史胶卷',number:'LEGACY',camera:'我的相机'});
+  const spec={name:'我的相机',model:'EOS Kiss III',lens:'EF 50mm f/1.8 STM',format:'135',sources:['https://global.canon/en/c-museum/product/film214.html']};
+  const created=await call('/api/cameras','POST',spec);assert.equal(created.status,201);const id=created.body.id;
+  assert.equal((await call('/api/cameras','POST',spec)).status,400);
+  const selected=await call('/api/rolls','POST',{title:'已选相机',number:'LINKED',camera:spec.name});assert.equal(selected.body.cameraId,id);
+  const library=(await call('/api/library')).body;assert.equal(library.rolls.find(r=>r.id===legacy.body.id).cameraId,id);assert.equal(library.rolls.find(r=>r.id===unknown.body.id).camera,'');
+  assert.equal((await call('/api/rolls','POST',{title:'无效相机',number:'BAD',cameraId:'missing'})).status,400);
+  assert.equal((await call('/api/cameras/'+id,'PUT',{...spec,name:'旅行相机'})).status,200);
+  await stop();await start();
+  const restored=(await call('/api/library')).body;assert.equal(restored.cameras.length,1);assert.equal(restored.cameras[0].name,'旅行相机');assert.equal(restored.rolls.find(r=>r.id===selected.body.id).camera,'旅行相机');
+  assert.equal((await call('/api/cameras/'+id,'DELETE')).status,200);
+  const after=(await call('/api/library')).body;assert.equal(after.cameras.length,0);assert.equal(after.rolls.length,3);assert.equal(after.rolls.find(r=>r.id===selected.body.id).camera,'旅行相机');assert.equal(after.rolls.find(r=>r.id===selected.body.id).cameraId,'');
+});
+
 test('胶卷档案、原图、帧序和磁盘恢复', async t => {
   await start();
   t.after(async()=>{if(process.exitCode===null)await stop();fs.rmSync(data,{recursive:true,force:true});});

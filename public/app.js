@@ -1,9 +1,11 @@
 import { setupInlineArchive } from './inline-archive.js';
 import { setupOrientation } from './orientation-ui.js';
 import { setupRollNavigation } from './roll-navigation.js';
+import { setupCameras } from './cameras.js';
 import { sheetLayout, framePosition } from './sheet-layout.mjs';
 const $ = s => document.querySelector(s);
 let automaticOrientation=true;
+let cameraReturnId=null,cameraReturnForm=false;
 let library = { rolls: [] }, currentId = null, view = 'grid', viewerIndex = 0, editingId = null, uploadBusy = false, filmTimer = null, sheetCanvas = null, sheetGeneration = 0, viewerVersion = null, folderBusy=false, checkedFolder=null;
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const current = () => library.rolls.find(r => r.id === currentId);
@@ -35,11 +37,19 @@ function renderLibrary() {
   $('#roll-grid').innerHTML = rolls.map(r => `<button class="roll-card" data-roll="${r.id}" aria-label="打开胶卷 ${esc(r.title)}"><div class="roll-cover">${r.photos.length ? `<img src="${imageUrl(r.photos[0])}" alt="${esc(r.title)}的封面" loading="lazy">` : `<span class="cover-empty">${esc(r.format || 'ROLL')}</span>`}<span class="cover-count">${String(r.photos.length).padStart(2,'0')} FRAMES</span></div><div class="card-body"><div class="card-top"><span class="serial">№ ${esc(r.number)}</span></div><h3>${esc(r.title)}</h3><p class="card-description">${esc(r.camera || '相机待补全')}<br>${esc(r.film || '胶卷型号待补全')}${r.iso ? ` / ISO ${esc(r.iso)}` : ''}</p><div class="card-date"><span>${esc(period(r))}</span><span>${esc(r.format || '规格待补全')}</span></div></div></button>`).join('');
   $('#library-empty').hidden = library.rolls.length > 0;
   if (library.rolls.length && !rolls.length) $('#roll-grid').innerHTML = '<p class="muted">没有匹配的胶卷。试试其他关键词或分类。</p>';
-  for (const key of ['camera', 'film']) $('#' + key + '-options').innerHTML = [...new Set(library.rolls.map(r => r[key]).filter(Boolean))].map(v => `<option value="${esc(v)}"></option>`).join('');
+  $('#film-options').innerHTML = [...new Set(library.rolls.map(r => r.film).filter(Boolean))].map(v => `<option value="${esc(v)}"></option>`).join('');
+  cameraUI.render();
   rollNavigation.render();
+  if(!$('#cameras-view').hidden)$('#all-rolls').classList.remove('active');
 }
-function showLibrary() { stopFilm(); currentId = null; $('#detail-view').hidden = true; $('#library-view').hidden = false; $('#breadcrumb').textContent = '全部胶卷'; rollNavigation.render(); }
-function openRoll(id) { if(!library.rolls.some(r=>r.id===id))return;if(uploadBusy&&id!==currentId)return toast('照片正在导入，完成后即可切换胶卷。');currentId = id; $('#library-view').hidden = true; $('#detail-view').hidden = false; $('#star-filter').checked = false; if(!uploadBusy)$('#import-progress').hidden=true; setView('grid'); renderDetail(); rollNavigation.render({revealCurrent:true}); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function showLibrary() { stopFilm(); currentId = null; $('#cameras-view').hidden=true;$('#my-cameras').classList.remove('active');if(location.hash==='#cameras')history.replaceState(null,'',location.pathname+location.search);$('#detail-view').hidden = true; $('#library-view').hidden = false; $('#breadcrumb').textContent = '全部胶卷'; rollNavigation.render(); }
+function openRoll(id) { if(!library.rolls.some(r=>r.id===id))return;if(uploadBusy&&id!==currentId)return toast('照片正在导入，完成后即可切换胶卷。');$('#cameras-view').hidden=true;$('#my-cameras').classList.remove('active');if(location.hash==='#cameras')history.replaceState(null,'',location.pathname+location.search);currentId = id; $('#library-view').hidden = true; $('#detail-view').hidden = false; $('#star-filter').checked = false; if(!uploadBusy)$('#import-progress').hidden=true; setView('grid'); renderDetail(); rollNavigation.render({revealCurrent:true}); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function showCameras() {
+  if(uploadBusy)return toast('照片正在导入，完成后即可管理相机。');
+  stopFilm();cameraReturnId=currentId;cameraReturnForm=$('#roll-dialog').open;if(cameraReturnForm)$('#roll-dialog').close();currentId=null;
+  $('#library-view').hidden=true;$('#detail-view').hidden=true;$('#cameras-view').hidden=false;rollNavigation.render();$('#all-rolls').classList.remove('active');$('#my-cameras').classList.add('active');$('#breadcrumb').textContent='我的相机';
+  $('#camera-back').textContent=cameraReturnForm?'‹ 返回新建胶卷':cameraReturnId?'‹ 返回胶卷详情':'‹ 返回胶卷库';cameraUI.render();history.replaceState(null,'','#cameras');window.scrollTo({top:0,behavior:'instant'});
+}
 function visiblePhotos() { return current()?.photos.filter(p => !$('#star-filter').checked || p.starred) || []; }
 function renderArchiveLabels(r) {
   $('#breadcrumb').textContent=r.title;$('#roll-number').textContent=`ROLL № ${r.number} / ${r.format||'规格待补全'}`;
@@ -100,6 +110,7 @@ function playFilm() {
 }
 function openForm(roll = null) {
   editingId = roll?.id || null; const form = $('#roll-form'); form.reset(); $('#form-error').textContent = '';
+  cameraUI.options();
   $('#form-title').textContent = roll ? '编辑胶卷档案' : '新建胶卷档案';
   if (roll) { for (const element of form.elements) if (element.name && roll[element.name] != null) element.value = roll[element.name]; }
   else { const year = new Date().getFullYear(); let n = library.rolls.length + 1; while (library.rolls.some(r => r.number === `${year}-${String(n).padStart(3,'0')}`)) n++; form.elements.number.value = `${year}-${String(n).padStart(3,'0')}`; }
@@ -197,12 +208,14 @@ function pickPhotos() { if(!uploadBusy) $('#photo-input').click(); }
 $('#new-roll').onclick = $('#empty-new').onclick = () => openForm();
 const inlineArchive=setupInlineArchive({getCurrent:current,save:(id,input)=>send('/api/rolls/'+id,'PUT',input),onSaved:updated=>{
   const roll=library.rolls.find(r=>r.id===updated.id);if(!roll)return;
-  for(const key of ['title','number','camera','film','iso','format','loadedAt','shotStart','shotEnd','developedAt','lab','notes'])roll[key]=updated[key];
+  for(const key of ['title','number','camera','cameraId','film','iso','format','loadedAt','shotStart','shotEnd','developedAt','lab','notes'])roll[key]=updated[key];
   renderLibrary();if(currentId===updated.id){renderArchiveLabels(roll);if(view==='film'){const left=$('#film-strip').scrollLeft;renderPhotos();$('#film-strip').scrollLeft=left;}}
 }});
 $('#roll-form').onsubmit = saveRoll;
 $('#roll-grid').onclick = e => { const card = e.target.closest('[data-roll]'); if(card) openRoll(card.dataset.roll); };
 $('#all-rolls').onclick = showLibrary;
+$('#my-cameras').onclick=showCameras;
+$('#camera-back').onclick=()=>{const id=cameraReturnId,form=cameraReturnForm;if(form){showLibrary();$('#roll-dialog').showModal();}else if(id&&library.rolls.some(r=>r.id===id))openRoll(id);else showLibrary();};
 $('#search').oninput = renderLibrary; $('#back-library').onclick = showLibrary;
 $('#import-photos').onclick = $('#empty-import').onclick = pickPhotos; $('#photo-input').onchange = e => importPhotos(e.target.files);
 $('#grid-tab').onclick = () => setView('grid'); $('#film-tab').onclick = () => setView('film'); $('#star-filter').onchange = () => { stopFilm(); renderPhotos(); };
@@ -288,5 +301,7 @@ $('#detail-view').addEventListener('drop',e=>{if(e.dataTransfer.files.length){e.
 window.addEventListener('beforeunload',e=>{if(uploadBusy){e.preventDefault();e.returnValue='';}});
 api('/api/imports/active').then(job=>{if(job){$('#folder-dialog').showModal();followImport(job.id);}}).catch(()=>{});
 setupOrientation({getCurrent:current,getVersions:photoVersions,refresh,toast,stopFilm});
+const cameraUI=setupCameras({getLibrary:()=>library,send,refresh,toast,confirmAction,showCameras,showCameraRolls:camera=>{showLibrary();$('#search').value=camera.name;renderLibrary();window.scrollTo({top:0,behavior:'instant'});}});
+window.addEventListener('hashchange',()=>{if(location.hash==='#cameras'&&$('#cameras-view').hidden)showCameras();else if(location.hash!=='#cameras'&&!$('#cameras-view').hidden)showLibrary();});
 api('/api/capabilities').then(c=>{automaticOrientation=c.automaticOrientation;if(!automaticOrientation){$('#orientation-dialog h2').textContent='方向核对';$('#orientation-dialog>p.muted').textContent='当前平台采用手动方向核对。对照预览选择旋转角度，应用后可以撤销；原片不会改写。';$('#orientation-rescan').textContent='重新核对';}if(current())renderDetail();}).catch(()=>{});
-refresh().catch(e=>{ $('#library-empty').innerHTML='<h2>暂时无法连接本机档案</h2><p>请确认光匣已启动，再刷新页面。</p>'; toast(e.message); });
+refresh().then(()=>{if(location.hash==='#cameras')showCameras();}).catch(e=>{ $('#library-empty').innerHTML='<h2>暂时无法连接本机档案</h2><p>请确认光匣已启动，再刷新页面。</p>'; toast(e.message); });

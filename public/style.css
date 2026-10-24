@@ -58,3 +58,34 @@ body.viewing-roll{--side:284px}
  #roll-navigation-select{display:block;grid-column:1/-1;font-size:14px;padding:8px;max-width:100%}
  .roll-navigation-search,.roll-navigation-list,#roll-navigation-empty{display:none!important}
 }
+/* Personal camera registry. */
+.camera-field-heading{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.camera-field-heading button{font-size:10px;color:#dab489;padding:0;white-space:nowrap}
+.camera-overview{display:flex;align-items:center;gap:40px;padding:22px 0 30px;border-bottom:1px solid var(--border);margin-bottom:30px}
+.camera-overview>div{display:flex;align-items:baseline;gap:9px}
+.camera-overview strong{font:34px ui-monospace,monospace;color:#eee5d3}
+.camera-overview span{font-size:12px;color:var(--muted)}
+.camera-overview>p{margin-left:auto;color:var(--muted);font-size:11px}
+.camera-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;align-items:start}
+.camera-card{min-width:0;border:1px solid #3e4535;border-radius:8px;padding:26px;background:linear-gradient(145deg,#20261d,#151914)}
+.camera-card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
+.camera-drawing{width:115px;height:76px;color:#bba584}
+.camera-drawing svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.camera-state{font-size:11px;padding:6px 10px;background:#333d2b;color:#c0cfb0;border-radius:4px}
+.camera-card .eyebrow{font-size:10px;margin-bottom:11px}
+.camera-card h2{font-size:24px;font-weight:550;line-height:1.4;margin:0 0 9px;overflow-wrap:anywhere}
+.camera-model{font-size:12px;color:#a6b29a;margin:0 0 16px;line-height:1.7}
+.camera-lens{font-size:15px;color:#e2c7a3;margin:0 0 18px;line-height:1.7}
+.camera-tags{display:flex;flex-wrap:wrap;gap:8px}.camera-tags span{border:1px solid #4b523f;border-radius:3px;padding:4px 8px;font-size:10px;color:#aebc9e}
+.camera-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 18px;margin:25px 0}
+.camera-card dt{font-size:10px;color:#88987a;margin-bottom:6px}.camera-card dd{margin:0;font-size:13px;color:#d5dccb;overflow-wrap:anywhere;line-height:1.6}
+.camera-reference{border-top:1px solid #38432f;padding:15px 0;color:#b7c1aa;font-size:12px;line-height:1.9}
+.camera-reference summary{cursor:pointer;color:#b4a487}.camera-reference dl{display:grid;gap:13px}.camera-reference p{white-space:pre-wrap;overflow-wrap:anywhere}
+.camera-sources{display:flex;flex-direction:column;gap:7px}.camera-sources>span{font-size:10px;color:#88987a}.camera-sources a{color:#d8ad7e;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}
+.camera-card-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;border-top:1px solid #38432f;padding-top:18px}
+.camera-card-actions .secondary{font-size:12px;padding:9px 13px}.camera-card-actions .danger-text{font-size:10px;margin:0 0 0 auto;padding:5px}
+.camera-usage{font-size:11px;color:#b6c2a5}.camera-empty{text-align:center;padding:65px 20px;border:1px dashed #434d37;border-radius:7px;color:var(--muted)}.camera-empty h2{color:var(--text);font-size:23px}.camera-empty p{font-size:13px;line-height:1.8}
+.camera-dialog{width:min(850px,calc(100vw - 32px))}.camera-template{display:flex;flex-direction:column;gap:9px;color:#b7c1a9;font-size:12px}.camera-template select{width:100%;background:#141912;color:var(--text);border:1px solid #49533c;border-radius:4px;padding:11px;min-width:0}
+.camera-form-hint{font-size:12px;line-height:1.8}.camera-dialog textarea{font-size:13px}.camera-dialog .form-grid{margin-top:24px}
+@media(max-width:1000px){.camera-grid{grid-template-columns:minmax(0,1fr)}.camera-overview{gap:22px;flex-wrap:wrap}.camera-overview>p{margin:0;width:100%}}
+@media(max-width:760px){.camera-overview{gap:14px;justify-content:space-between}.camera-overview strong{font-size:27px}.camera-overview span{font-size:10px}.camera-overview>div{gap:6px}.camera-card{padding:20px}.camera-card h2{font-size:22px}.camera-field-heading button{font-size:10px}.camera-dialog .form-grid input,.camera-dialog .form-grid select,.camera-dialog .form-grid textarea{font-size:16px}#camera-dialog .dialog-actions{position:sticky;bottom:-28px;background:#1c211af5;border-top:1px solid var(--border);padding-top:15px}}
