@@ -49,13 +49,13 @@ export function createOrientationDetector(dataDir) {
     async detect(file) {
       if(process.platform==='darwin')return detectMacOrientation(file,dataDir);
       if(!text)return {angle:null,reliable:false,method:'manual',reason:'此平台暂不支持自动人脸与文字识别，请对照预览手动选择方向。'};
-      const meta=await sharp(file).metadata();
+      const input=await fs.promises.readFile(file),meta=await sharp(input).metadata();
       if(Math.min(meta.width||0,meta.height||0)<48)return {angle:null,reliable:false,method:'unknown',reason:'预览尺寸太小，无法可靠判断方向，请手动确认。'};
       const tools=path.join(dataDir,'tools');fs.mkdirSync(tools,{recursive:true});
       const normalized=path.join(tools,`orientation-${randomUUID()}.png`);
       try {
         // Both engines see the same EXIF-normalized pixels as the browser preview.
-        await sharp(file).autoOrient().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true}).png().toFile(normalized);
+        await sharp(input).autoOrient().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true}).png().toFile(normalized);
         const [faceResult,textResult]=await Promise.allSettled([detectWindowsFaces(normalized),text.analyze(normalized)]);
         if(textResult.status==='rejected')throw textResult.reason;
         const faces=faceResult.status==='fulfilled'?faceResult.value:{candidates:[],faceAvailable:false};

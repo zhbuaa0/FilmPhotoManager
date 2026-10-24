@@ -47,13 +47,14 @@ export function createTextDetector(dataDir) {
     async analyze(file) {
       if(failure)throw failure;
       try {
-      const meta=await sharp(file).metadata();
+      // Buffer input avoids libvips file-cache locks on Windows (notably EXIF JPEGs).
+      const input=await fs.promises.readFile(file),meta=await sharp(input).metadata();
       if(!meta.width||!meta.height)throw new Error('无法读取照片尺寸。');
       const candidates=[0,90,180,270].map(angle=>({angle,textScore:0,textChars:0,textLines:0,textConfidence:0}));
       if(Math.min(meta.width,meta.height)<48)return candidates;
       const engine=await getWorker();
       for(const candidate of candidates) {
-        const bytes=await sharp(file).autoOrient().rotate(candidate.angle).resize({width:1200,height:1200,fit:'inside',withoutEnlargement:true}).greyscale().png().toBuffer();
+        const bytes=await sharp(input).autoOrient().rotate(candidate.angle).resize({width:1200,height:1200,fit:'inside',withoutEnlargement:true}).greyscale().png().toBuffer();
         let timer;
         try {
           const result=await Promise.race([engine.recognize(bytes,{rotateAuto:false},{blocks:true,text:false}),new Promise((_,reject)=>{timer=setTimeout(()=>{void engine.terminate();reject(new Error('本机文字识别超时，请重新识别这一卷。'));},45000);})]);
