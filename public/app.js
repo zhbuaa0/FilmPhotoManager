@@ -6,10 +6,13 @@ import {setupFilms} from './films.js';
 import {filmStocks} from './film-catalog.mjs';
 import {renderFilmCanister,layoutFilmCanister,filmPresentation} from './film-canister.mjs';
 import {reelExposure,reelScroll} from './film-reel.mjs';
+import {createReelMotion,wheelPixels} from './reel-motion.mjs';
 import { sheetLayout, framePosition } from './sheet-layout.mjs';
 const $ = s => document.querySelector(s);
 let automaticOrientation=true;
 let filmPull=0,filmDimensions=null,filmRenderKey='',filmLayoutPending=false,filmLayoutRAF=0;
+let filmMaximum=0,filmViewPhotos=[],filmOrdinals=[],filmCounterKey='',filmPositionRAF=0,filmPendingSeek=null;
+const filmMotion=createReelMotion({read:()=>$('#film-strip').scrollLeft,write:left=>{$('#film-strip').scrollLeft=left;},maximum:()=>filmMaximum,onActive:({active,mode,source})=>{const stage=$('.film-stage');stage.classList.toggle('is-pulling',active);stage.classList.toggle('is-moving',active);stage.dataset.motion=mode;stage.dataset.motionSource=source;}});
 let cameraReturnId=null,cameraReturnForm=false;
 let library = { rolls: [] }, currentId = null, view = 'grid', viewerIndex = 0, editingId = null, uploadBusy = false, filmTimer = null, sheetCanvas = null, sheetGeneration = 0, viewerVersion = null, folderBusy=false, checkedFolder=null;
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -71,9 +74,13 @@ function renderDetail() {
 }
 function renderPhotos() {
   const r = current(); if (!r) return;
+  if(!filmLayoutPending&&filmDimensions)filmPull=reelExposure($('#film-strip').scrollLeft,filmMaximum,filmDimensions.pitch,filmViewPhotos.length);
+  const ongoing=filmMotion.mode==='spring'&&filmDimensions?{index:reelExposure(filmMotion.target,filmMaximum,filmDimensions.pitch,filmViewPhotos.length),manual:false,animate:true,origin:filmMotion.source}:null;
+  filmMotion.cancel();
   const photos = visiblePhotos(),filmInfo=filmPresentation(r);
+  filmViewPhotos=photos;filmOrdinals=photos.map(photo=>r.photos.indexOf(photo)+1);filmCounterKey='';
   const reelKey=r.id+'|'+filmInfo.format+'|'+photos.map(p=>p.id).join(',');
-  if(reelKey!==filmRenderKey){filmPull=0;filmRenderKey=reelKey;}
+  if(reelKey!==filmRenderKey){filmPull=0;filmPendingSeek=null;filmRenderKey=reelKey;}else if(ongoing)filmPendingSeek=ongoing;
   filmLayoutPending=true;
   renderFilmCanister($('.film-stage'),r);
   $('#photo-empty').hidden = r.photos.length > 0;
@@ -87,43 +94,50 @@ function renderPhotos() {
   if (!photos.length && r.photos.length) { $('#photo-grid').innerHTML = '<p class="muted">还没有精选照片，点击照片下方的星标来添加。</p>'; $('#film-strip').innerHTML = '<p class="muted">这一卷还没有精选照片。</p>'; }
 }
 function setView(value) { stopFilm(); view = value; $('#grid-tab').setAttribute('aria-selected', value === 'grid'); $('#film-tab').setAttribute('aria-selected', value === 'film'); renderPhotos(); }
-function stopFilm() { clearInterval(filmTimer); filmTimer = null; $('#play-film').textContent = '▷ 自动走片'; }
+function stopFilm(stopMotion=true) { clearInterval(filmTimer); filmTimer = null; $('#play-film').textContent = '▷ 自动走片';if(stopMotion){filmPendingSeek=null;filmMotion.cancel();requestFilmPosition();} }
 function filmFrames() { return [...$('#film-strip').querySelectorAll('.film-frame')]; }
 function requestFilmLayout() {
-  filmLayoutPending=true;cancelAnimationFrame(filmLayoutRAF);
+  if(filmMotion.mode==='spring'&&filmDimensions&&!filmPendingSeek)filmPendingSeek={index:reelExposure(filmMotion.target,filmMaximum,filmDimensions.pitch,filmViewPhotos.length),manual:false,animate:true,origin:filmMotion.source};
+  filmMotion.cancel();filmLayoutPending=true;cancelAnimationFrame(filmLayoutRAF);
   filmLayoutRAF=requestAnimationFrame(()=>{
     const r=current(),strip=$('#film-strip');if(!r||view!=='film'||!strip.clientWidth)return;
     filmDimensions=layoutFilmCanister($('.film-stage'),r);
     const spacer=strip.querySelector('.reel-end-space');
     if(spacer)spacer.style.width=Math.max(0,strip.clientWidth-filmDimensions.pitch-filmDimensions.tip)+'px';
-    const maximum=Math.max(0,strip.scrollWidth-strip.clientWidth);
+    const maximum=Math.max(0,strip.scrollWidth-strip.clientWidth);filmMaximum=maximum;
     strip.scrollTo({left:reelScroll(filmPull,maximum,filmDimensions.pitch,filmFrames().length),behavior:'instant'});
     filmLayoutPending=false;updateFilmPosition();
+    if(filmPendingSeek){const pending=filmPendingSeek;filmPendingSeek=null;scrollFilmTo(pending.index,pending.manual,pending.animate,pending.origin);if(pending.origin==='seek')$('#film-seek').value=Math.max(0,Math.min(filmViewPhotos.length-1,pending.index));}
   });
 }
-function nearestFilmIndex() {return Math.max(0,Math.min(filmFrames().length-1,Math.round(filmPull)));}
+function nearestFilmIndex() {return Math.max(0,Math.min(filmViewPhotos.length-1,Math.round(filmPull)));}
+function requestFilmPosition() {if(!filmPositionRAF)filmPositionRAF=requestAnimationFrame(()=>{filmPositionRAF=0;updateFilmPosition();});}
 function updateFilmPosition() {
   if(filmLayoutPending||!filmDimensions)return;
-  const frames=filmFrames(),r=current(),strip=$('#film-strip');if(!r)return;
-  filmPull=reelExposure(strip.scrollLeft,Math.max(0,strip.scrollWidth-strip.clientWidth),filmDimensions.pitch,frames.length);
-  const index=nearestFilmIndex(),photo=visiblePhotos()[index],frame=photo?r.photos.indexOf(photo)+1:0;
-  $('#film-position').textContent=frames.length?`${String(frame).padStart(2,'0')} / ${String(r.photos.length).padStart(2,'0')}`:'无精选照片';
-  $('#film-seek').value=index;$('#film-seek').setAttribute('aria-valuetext',frames.length?`第 ${frame} 帧`:'无照片');
-  $('#film-prev').disabled=!frames.length||index===0;$('#film-next').disabled=!frames.length||index===frames.length-1;$('#play-film').disabled=frames.length<2;
-  $('.film-stage').dataset.exposedFrames=String(frames.length?1+filmPull:0);
-  if(filmTimer&&index===frames.length-1)stopFilm();
+  const count=filmViewPhotos.length,r=current(),strip=$('#film-strip');if(!r)return;
+  filmPull=reelExposure(strip.scrollLeft,filmMaximum,filmDimensions.pitch,count);
+  const index=nearestFilmIndex(),frame=filmOrdinals[index]||0,seek=$('#film-seek'),key=r.id+'|'+frame+'|'+count;
+  if(filmCounterKey!==key){
+    filmCounterKey=key;$('#film-position').textContent=count?`${String(frame).padStart(2,'0')} / ${String(r.photos.length).padStart(2,'0')}`:'无精选照片';
+    seek.setAttribute('aria-valuetext',count?`第 ${frame} 帧`:'无照片');
+    $('#film-prev').disabled=!count||index===0;$('#film-next').disabled=!count||index===count-1;$('#play-film').disabled=count<2;
+  }
+  if(!(document.activeElement===seek&&filmMotion.source==='seek'))seek.value=index;
+  $('.film-stage').dataset.exposedFrames=String(count?Number((1+filmPull).toFixed(4)):0);
+  if(filmTimer&&index===count-1)stopFilm(false);
 }
-function scrollFilmTo(index,manual=true,animate=true) {
-  if(manual)stopFilm();const strip=$('#film-strip'),count=filmFrames().length;if(!count||!filmDimensions)return;
-  const exposure=Math.max(0,Math.min(count-1,index)),maximum=Math.max(0,strip.scrollWidth-strip.clientWidth);
-  strip.scrollTo({left:reelScroll(exposure,maximum,filmDimensions.pitch,count),behavior:!animate||matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+function scrollFilmTo(index,manual=true,animate=true,origin='step') {
+  if(manual)stopFilm(false);const count=filmViewPhotos.length;if(!count)return;
+  if(filmLayoutPending||!filmDimensions){filmPendingSeek={index,manual,animate,origin};return;}
+  const exposure=Math.max(0,Math.min(count-1,index));
+  filmMotion.to(reelScroll(exposure,filmMaximum,filmDimensions.pitch,count),{immediate:!animate,origin});
 }
 function playFilm() {
   if (filmTimer) return stopFilm();
   const frames = filmFrames(); if (frames.length < 2) return;
   if (nearestFilmIndex() === frames.length - 1) scrollFilmTo(0, false, false);
   $('#play-film').textContent = 'Ⅱ 暂停走片';
-  filmTimer = setInterval(() => { const index = nearestFilmIndex(); if (index >= filmFrames().length - 1) return stopFilm(); scrollFilmTo(index + 1, false); }, 1700);
+  filmTimer = setInterval(() => { const index = nearestFilmIndex(); if (index >= filmFrames().length - 1) return stopFilm(false); scrollFilmTo(index + 1, false, true, 'auto'); }, 1700);
 }
 function openForm(roll = null) {
   editingId = roll?.id || null; const form = $('#roll-form'); form.reset(); $('#form-error').textContent = '';
@@ -239,17 +253,39 @@ $('#import-photos').onclick = $('#empty-import').onclick = pickPhotos; $('#photo
 $('#grid-tab').onclick = () => setView('grid'); $('#film-tab').onclick = () => setView('film'); $('#star-filter').onchange = () => { stopFilm(); renderPhotos(); };
 $('#film-prev').onclick = () => scrollFilmTo(nearestFilmIndex() - 1);
 $('#film-next').onclick = () => scrollFilmTo(nearestFilmIndex() + 1);
-$('#film-seek').oninput = e => scrollFilmTo(Number(e.target.value), true, false);
-$('#film-strip').addEventListener('scroll', updateFilmPosition, {passive:true});
+$('#film-seek').oninput = e => scrollFilmTo(Number(e.target.value),true,true,'seek');
+$('#film-strip').addEventListener('scroll', requestFilmPosition, {passive:true});
 let lastReelWidth=0;new ResizeObserver(entries=>{const width=entries[0].contentRect.width;if(view==='film'&&width>0&&Math.abs(width-lastReelWidth)>1){lastReelWidth=width;requestFilmLayout();}}).observe($('.film-stage'));
 $('#film-strip').addEventListener('keydown', e => { if(e.target!==e.currentTarget)return; if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();scrollFilmTo(e.key==='Home'?0:e.key==='End'?filmFrames().length-1:nearestFilmIndex()+(e.key==='ArrowRight'?1:-1),true,e.key.startsWith('Arrow'));} });
-$('#play-film').onclick = playFilm; $('#film-strip').onwheel = e => { if(Math.abs(e.deltaY)>Math.abs(e.deltaX)) { e.preventDefault(); $('#film-strip').scrollLeft -= e.deltaY; stopFilm(); } };
-let filmDrag = null, suppressFilmClick = false;
-$('#film-strip').addEventListener('pointerdown', e => { if(e.pointerType!=='mouse'||e.button!==0)return; filmDrag={x:e.clientX,left:$('#film-strip').scrollLeft,moved:false}; });
-$('#film-strip').addEventListener('pointermove', e => { if(!filmDrag)return; const strip=$('#film-strip'),distance=e.clientX-filmDrag.x; if(Math.abs(distance)>5&&!filmDrag.moved){filmDrag.moved=true;strip.setPointerCapture(e.pointerId);strip.style.scrollBehavior='auto';strip.style.cursor='grabbing';strip.classList.add('is-dragging');$('.film-stage').classList.add('is-pulling');stopFilm();} if(filmDrag.moved)strip.scrollLeft=filmDrag.left-distance; });
-function endFilmDrag() { if(filmDrag?.moved){suppressFilmClick=true;setTimeout(()=>suppressFilmClick=false,200);} filmDrag=null;$('#film-strip').style.scrollBehavior='';$('#film-strip').style.cursor='';$('#film-strip').classList.remove('is-dragging');$('.film-stage').classList.remove('is-pulling'); }
-$('#film-strip').addEventListener('pointerup',endFilmDrag); $('#film-strip').addEventListener('pointercancel',endFilmDrag);
-$('#film-strip').addEventListener('pointerleave',()=>{if(filmDrag&&!filmDrag.moved)filmDrag=null;});
+$('#play-film').onclick = playFilm;
+$('#film-strip').addEventListener('wheel',e=>{
+  if(e.ctrlKey||filmViewPhotos.length<2||filmLayoutPending)return;
+  e.preventDefault();stopFilm(false);
+  const strip=$('#film-strip'),delta=Math.abs(e.deltaY)>Math.abs(e.deltaX)?-e.deltaY:e.deltaX;
+  filmMotion.wheel(wheelPixels(delta,e.deltaMode,strip.clientWidth));
+},{passive:false});
+let filmDrag=null,suppressFilmClick=false;
+$('#film-strip').addEventListener('pointerdown',e=>{
+  if(e.pointerType==='touch'){stopFilm();return;}
+  if(e.button!==0)return;stopFilm();filmMotion.beginDrag(e.timeStamp);
+  filmDrag={x:e.clientX,left:$('#film-strip').scrollLeft,moved:false,id:e.pointerId};
+});
+$('#film-strip').addEventListener('pointermove',e=>{
+  if(!filmDrag||filmDrag.id!==e.pointerId)return;
+  const strip=$('#film-strip'),distance=e.clientX-filmDrag.x;
+  if(Math.abs(distance)>4&&!filmDrag.moved){filmDrag.moved=true;strip.setPointerCapture(e.pointerId);strip.classList.add('is-dragging');}
+  if(!filmDrag.moved)return;
+  const samples=e.getCoalescedEvents?.()||[];
+  for(const sample of samples.length?samples:[e])filmMotion.dragTo(filmDrag.left-(sample.clientX-filmDrag.x),sample.timeStamp);
+});
+function endFilmDrag(e) {
+  if(!filmDrag)return;
+  const moved=filmDrag.moved;filmMotion.release(e.timeStamp,{inertia:moved&&e.type==='pointerup'});
+  if(moved){suppressFilmClick=true;setTimeout(()=>suppressFilmClick=false,220);}
+  filmDrag=null;$('#film-strip').classList.remove('is-dragging');
+}
+$('#film-strip').addEventListener('pointerup',endFilmDrag);$('#film-strip').addEventListener('pointercancel',endFilmDrag);$('#film-strip').addEventListener('lostpointercapture',endFilmDrag);
+$('#film-strip').addEventListener('pointerleave',e=>{if(filmDrag&&!filmDrag.moved)endFilmDrag(e);});
 $('#film-strip').addEventListener('dragstart',e=>e.preventDefault());
 $('#film-strip').addEventListener('click',e=>{if(suppressFilmClick){e.preventDefault();e.stopPropagation();suppressFilmClick=false;}},true);
 document.querySelector('.view-tabs').addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();const value=view==='grid'?'film':'grid';setView(value);$('#'+value+'-tab').focus();}});

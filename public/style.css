@@ -128,4 +128,6 @@ body.viewing-roll{--side:284px}
 .film-stage.film-monochrome .film-edge-label,.film-stage.film-monochrome .film-frame-caption{color:#e3d8b8}
 .film-stage.film-no-perforations .film-ribbon{mask-image:none}.film-stage.film-no-perforations .film-edge-label{top:3px;font-size:7px}.film-stage.film-no-perforations .film-frame-caption{bottom:3px;font-size:7px}
 .film-stage.is-pulling .reel-gate{box-shadow:5px 0 7px #3b210a44}
+.film-stage .film-strip{contain:layout paint}
+.film-stage .film-strip.is-dragging{cursor:grabbing}
 @media(max-width:760px){.archive-basics{grid-template-columns:repeat(2,minmax(0,1fr))}.archive-basics>label:last-of-type{grid-column:1/-1}.film-stage{border-width:3px;border-radius:9px}.reel-stock-label{left:12px;bottom:7px;font-size:8px}.reel-tip{font-size:6px;gap:6px}.reel-tip small{font-size:6px}.film-scrubber{margin-top:14px}}
