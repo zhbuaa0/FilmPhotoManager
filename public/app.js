@@ -4,6 +4,7 @@ import { setupRollNavigation } from './roll-navigation.js';
 import { setupCameras } from './cameras.js';
 import {setupFilms} from './films.js';
 import {filmStocks} from './film-catalog.mjs';
+import {renderFilmCanister,filmPresentation} from './film-canister.mjs';
 import { sheetLayout, framePosition } from './sheet-layout.mjs';
 const $ = s => document.querySelector(s);
 let automaticOrientation=true;
@@ -36,7 +37,7 @@ function renderLibrary() {
   const rolls = library.rolls.filter(r => [r.title, r.camera, r.film, r.number, r.notes].join(' ').toLowerCase().includes(query));
   $('#collection-title').textContent = '全部胶卷';
   $('#visible-count').textContent = rolls.length + ' 卷';
-  $('#roll-grid').innerHTML = rolls.map(r => `<button class="roll-card" data-roll="${r.id}" aria-label="打开胶卷 ${esc(r.title)}"><div class="roll-cover">${r.photos.length ? `<img src="${imageUrl(r.photos[0])}" alt="${esc(r.title)}的封面" loading="lazy">` : `<span class="cover-empty">${esc(r.format || 'ROLL')}</span>`}<span class="cover-count">${String(r.photos.length).padStart(2,'0')} FRAMES</span></div><div class="card-body"><div class="card-top"><span class="serial">№ ${esc(r.number)}</span></div><h3>${esc(r.title)}</h3><p class="card-description">${esc(r.camera || '相机待补全')}<br>${esc(r.film || '胶卷型号待补全')}${r.iso ? ` / ISO ${esc(r.iso)}` : ''}</p><div class="card-date"><span>${esc(period(r))}</span><span>${esc(r.format || '规格待补全')}</span></div></div></button>`).join('');
+  $('#roll-grid').innerHTML = rolls.map(r => {const filmInfo=filmPresentation(r);return `<button class="roll-card" data-roll="${r.id}" aria-label="打开胶卷 ${esc(r.title)}"><div class="roll-cover">${r.photos.length ? `<img src="${imageUrl(r.photos[0])}" alt="${esc(r.title)}的封面" loading="lazy">` : `<span class="cover-empty">${esc(filmInfo.format || 'ROLL')}</span>`}<span class="cover-count">${String(r.photos.length).padStart(2,'0')} FRAMES</span></div><div class="card-body"><div class="card-top"><span class="serial">№ ${esc(r.number)}</span></div><h3>${esc(r.title)}</h3><p class="card-description">${esc(r.camera || '相机待补全')}<br>${esc(r.film || '胶卷型号待补全')}${filmInfo.iso ? ` / ISO ${esc(filmInfo.iso)}` : ''}</p><div class="card-date"><span>${esc(period(r))}</span><span>${esc(filmInfo.format || '规格待补全')}</span></div></div></button>`;}).join('');
   $('#library-empty').hidden = library.rolls.length > 0;
   if (library.rolls.length && !rolls.length) $('#roll-grid').innerHTML = '<p class="muted">没有匹配的胶卷。试试其他关键词或分类。</p>';
   $('#film-options').innerHTML = [...new Set([...filmStocks.map(f=>f.name),...library.rolls.map(r => r.film).filter(Boolean)])].map(v => `<option value="${esc(v)}"></option>`).join('');
@@ -54,9 +55,10 @@ function showCameras() {
 }
 function visiblePhotos() { return current()?.photos.filter(p => !$('#star-filter').checked || p.starred) || []; }
 function renderArchiveLabels(r) {
-  $('#breadcrumb').textContent=r.title;$('#roll-number').textContent=`ROLL № ${r.number} / ${r.format||'规格待补全'}`;
+  const filmInfo=filmPresentation(r);
+  $('#breadcrumb').textContent=r.title;$('#roll-number').textContent=`ROLL № ${r.number} / ${filmInfo.format||'规格待补全'}`;
   $('#roll-title').setAttribute('aria-label',r.title);
-  $('#roll-summary').innerHTML=`<span>${esc(r.camera||'相机未记录')}</span><span>·</span><span>${esc(r.film||'胶卷未记录')}${r.iso?' / ISO '+esc(r.iso):''}</span><span>·</span><span>${r.photos.length} 张照片</span>`;
+  $('#roll-summary').innerHTML=`<span>${esc(r.camera||'相机未记录')}</span><span>·</span><span>${esc(r.film||'胶卷未记录')}${filmInfo.iso?' / ISO '+esc(filmInfo.iso):''}</span><span>·</span><span>${r.photos.length} 张照片</span>`;
 }
 function renderDetail() {
   const r = current(); if (!r) return;
@@ -67,13 +69,14 @@ function renderDetail() {
 }
 function renderPhotos() {
   const r = current(); if (!r) return;
-  const photos = visiblePhotos();
+  const photos = visiblePhotos(),filmInfo=filmPresentation(r);
+  renderFilmCanister($('.film-stage'),r);
   $('#photo-empty').hidden = r.photos.length > 0;
   $('#photo-hint').hidden = !r.photos.length || view !== 'grid';
   $('#photo-grid').hidden = view !== 'grid' || !r.photos.length;
   $('#film-view').hidden = view !== 'film' || !r.photos.length;
   $('#photo-grid').innerHTML = photos.map((p, i) => `<article class="photo-card" draggable="${!uploadBusy}" data-photo="${p.id}" style="animation-delay:${Math.min(i,10)*25}ms"><button class="photo-open" data-open="${p.id}" aria-label="查看第 ${r.photos.indexOf(p)+1} 帧 ${esc(p.name)}"><img src="${imageUrl(p)}" alt="${esc(p.name)}" loading="lazy"></button><div class="photo-caption"><span>${String(r.photos.indexOf(p)+1).padStart(2,'0')} / ${esc(p.name)}</span><button class="star-button ${p.starred ? 'selected' : ''}" data-star="${p.id}" aria-label="${p.starred ? '取消' : '设为'}精选 ${esc(p.name)}" aria-pressed="${p.starred}">${p.starred ? '★' : '☆'}</button></div></article>`).join('');
-  $('#film-strip').innerHTML = `<div class="film-ribbon"><div class="film-leader" aria-hidden="true"><span>LIGHTBOX</span><strong>№ ${esc(r.number)}</strong><small>卷头 / START →</small></div>${photos.map(p => `<div class="film-frame" data-frame="${r.photos.indexOf(p)+1}"><span class="film-edge-label">${esc(r.film || 'LIGHTBOX')}${r.iso ? ' / ISO ' + esc(r.iso) : ''} <b>${String(r.photos.indexOf(p)+1).padStart(2,'0')}</b></span><button data-open="${p.id}" aria-label="放大第 ${r.photos.indexOf(p)+1} 帧 ${esc(p.name)}"><img src="${imageUrl(p)}" alt="${esc(p.name)}" loading="lazy" draggable="false"></button><span class="film-frame-caption">${String(r.photos.indexOf(p)+1).padStart(2,'0')} ◁ ${esc(p.name)}</span></div>`).join('')}<div class="film-leader film-tail" aria-hidden="true"><span>LIGHTBOX</span><strong>← END</strong><small>${photos.length} FRAMES</small></div></div>`;
+  $('#film-strip').innerHTML = `<div class="film-ribbon"><div class="film-leader" aria-hidden="true"><span>LIGHTBOX</span><strong>№ ${esc(r.number)}</strong><small>卷头 / START →</small></div>${photos.map(p => `<div class="film-frame" data-frame="${r.photos.indexOf(p)+1}"><span class="film-edge-label">${esc(r.film || 'LIGHTBOX')}${filmInfo.iso ? ' / ISO ' + esc(filmInfo.iso) : ''} <b>${String(r.photos.indexOf(p)+1).padStart(2,'0')}</b></span><button data-open="${p.id}" aria-label="放大第 ${r.photos.indexOf(p)+1} 帧 ${esc(p.name)}"><img src="${imageUrl(p)}" alt="${esc(p.name)}" loading="lazy" draggable="false"></button><span class="film-frame-caption">${String(r.photos.indexOf(p)+1).padStart(2,'0')} ◁ ${esc(p.name)}</span></div>`).join('')}<div class="film-leader film-tail" aria-hidden="true"><span>LIGHTBOX</span><strong>← END</strong><small>${photos.length} FRAMES</small></div></div>`;
   $('#film-seek').max = Math.max(0, photos.length - 1); $('#film-seek').disabled = !photos.length;
   requestAnimationFrame(updateFilmPosition);
   if (!photos.length && r.photos.length) { $('#photo-grid').innerHTML = '<p class="muted">还没有精选照片，点击照片下方的星标来添加。</p>'; $('#film-strip').innerHTML = '<p class="muted">这一卷还没有精选照片。</p>'; }
@@ -84,12 +87,15 @@ function filmFrames() { return [...$('#film-strip').querySelectorAll('.film-fram
 function nearestFilmIndex() {
   const strip = $('#film-strip'), ribbon = strip.querySelector('.film-ribbon'), frames = filmFrames();
   if (!frames.length) return 0;
+  if(strip.scrollLeft<=1)return 0;
+  if(strip.scrollLeft>=strip.scrollWidth-strip.clientWidth-1)return frames.length-1;
   const center = strip.scrollLeft + strip.clientWidth / 2 - ribbon.offsetLeft;
   return frames.reduce((best, frame, i) => Math.abs(frame.offsetLeft + frame.offsetWidth / 2 - center) < Math.abs(frames[best].offsetLeft + frames[best].offsetWidth / 2 - center) ? i : best, 0);
 }
 function updateFilmPosition() {
   const frames = filmFrames(), index = nearestFilmIndex(), r = current();
   if (!r) return;
+  $('.film-stage').style.setProperty('--spool-turn',`${$('#film-strip').scrollLeft / 5}deg`);
   $('#film-position').textContent = frames.length ? `${String(frames[index].dataset.frame).padStart(2,'0')} / ${String(r.photos.length).padStart(2,'0')}` : '无精选照片';
   $('#film-seek').value = index; $('#film-seek').setAttribute('aria-valuetext', frames.length ? `第 ${frames[index].dataset.frame} 帧` : '无照片');
   $('#film-prev').disabled = !frames.length || index === 0; $('#film-next').disabled = !frames.length || index === frames.length - 1;
@@ -178,7 +184,7 @@ function confirmAction(title, description) {
 function loadImage(src) { return new Promise((resolve,reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = () => reject(new Error('照片读取失败，请重新载入后再导出。')); img.src = src; }); }
 function fitText(ctx, text, max) { let t = text; while (ctx.measureText(t).width > max && t.length) t = t.slice(0,-1); return t === text ? t : t + '…'; }
 async function buildSheet() {
-  const token = ++sheetGeneration, r = current(); if (!r) return;
+  const token = ++sheetGeneration, r = current(); if (!r) return; const filmInfo=filmPresentation(r);
   const format = $('#sheet-format').value, light = $('#sheet-theme').value === 'light';
   $('#sheet-preview').classList.toggle('print-format', format !== 'free');
   $('#sheet-format-hint').textContent = format === '3:2' ? '3:2 横向，适合常规照片打印；照片完整显示，留出四周边距。' : format === '16:9' ? '16:9 横向，适合宽幅画面；打印时请选择同样比例或保留白边。' : '高度随照片数量调整，适合查阅整卷接触印样。';
@@ -191,7 +197,7 @@ async function buildSheet() {
     const bg = light ? '#f3f2ec' : '#101310', fg = light ? '#252b23' : '#e5e9dc', muted = light ? '#687260' : '#a4b392', gold = light ? '#78663e' : '#c3ab6d';
     ctx.fillStyle = bg; ctx.fillRect(0,0,width,height); ctx.fillStyle = gold; ctx.font = '22px monospace'; ctx.fillText('LIGHTBOX / CONTACT SHEET',margin,65); ctx.textAlign = 'right'; ctx.fillText(`ROLL № ${r.number} / ${r.photos.length} FRAMES`,width-margin,65); ctx.textAlign='left';
     ctx.fillStyle = fg; ctx.font = `bold ${fixed ? 48 : 58}px sans-serif`; ctx.fillText(fitText(ctx,r.title,width-margin*2),margin,fixed ? 122 : 150);
-    ctx.fillStyle = muted; ctx.font = `${fixed ? 23 : 27}px sans-serif`; ctx.fillText(fitText(ctx,`${r.camera || '相机未记录'}  /  ${r.film || '胶卷未记录'}${r.iso ? '  /  ISO ' + r.iso : ''}  /  ${r.format || '规格待补全'}`,width-margin*2),margin,fixed ? 165 : 204);
+    ctx.fillStyle = muted; ctx.font = `${fixed ? 23 : 27}px sans-serif`; ctx.fillText(fitText(ctx,`${r.camera || '相机未记录'}  /  ${r.film || '胶卷未记录'}${filmInfo.iso ? '  /  ISO ' + filmInfo.iso : ''}  /  ${filmInfo.format || '规格待补全'}`,width-margin*2),margin,fixed ? 165 : 204);
     ctx.font = '22px sans-serif'; ctx.fillText(fitText(ctx,`${r.shotStart || r.shotEnd ? '拍摄 ' : ''}${period(r)}    上卷 ${date(r.loadedAt)}    冲洗 ${date(r.developedAt)}${r.lab ? '    '+r.lab : ''}`,width-margin*2),margin,fixed ? 201 : 251);
     for (let i=0;i<r.photos.length;i++) {
       if (token !== sheetGeneration) return;
@@ -226,6 +232,7 @@ $('#film-prev').onclick = () => scrollFilmTo(nearestFilmIndex() - 1);
 $('#film-next').onclick = () => scrollFilmTo(nearestFilmIndex() + 1);
 $('#film-seek').oninput = e => scrollFilmTo(Number(e.target.value), true, false);
 $('#film-strip').addEventListener('scroll', updateFilmPosition, {passive:true});
+new ResizeObserver(()=>{if(view==='film')updateFilmPosition();}).observe($('#film-strip'));
 $('#film-strip').addEventListener('keydown', e => { if(e.target!==e.currentTarget)return; if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();scrollFilmTo(e.key==='Home'?0:e.key==='End'?filmFrames().length-1:nearestFilmIndex()+(e.key==='ArrowRight'?1:-1),true,e.key.startsWith('Arrow'));} });
 $('#play-film').onclick = playFilm; $('#film-strip').onwheel = e => { if(Math.abs(e.deltaY)>Math.abs(e.deltaX)) { e.preventDefault(); $('#film-strip').scrollLeft += e.deltaY; stopFilm(); } };
 let filmDrag = null, suppressFilmClick = false;

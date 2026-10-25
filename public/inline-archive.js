@@ -1,3 +1,4 @@
+import {filmDefaults} from './film-canister.mjs';
 const fields=['title','number','camera','film','iso','format','loadedAt','shotStart','shotEnd','developedAt','lab','notes'];
 export function setupInlineArchive({getCurrent,save,onSaved}) {
   const form=document.querySelector('#roll-inline-form'),status=document.querySelector('#archive-save-status'),error=document.querySelector('#archive-save-error');
@@ -39,7 +40,9 @@ export function setupInlineArchive({getCurrent,save,onSaved}) {
   }
   function track(event) {
     const element=event.target;if(element.form!==form||!fields.includes(element.name)||!getCurrent())return;
-    const state=stateFor(getCurrent());state.values[element.name]=element.value;state.revision++;state.error='';
+    const state=stateFor(getCurrent());
+    if(element.name==='film')for(const [key,value] of Object.entries(filmDefaults(element.value,state.values.film,state.values))){state.values[key]=value;form.elements[key].value=value;}
+    state.values[element.name]=element.value;state.revision++;state.error='';
     if(element.validity.badInput)state.invalid.add(element.name);else state.invalid.delete(element.name);
     feedback(displayedId,state);
   }
@@ -49,7 +52,11 @@ export function setupInlineArchive({getCurrent,save,onSaved}) {
   detail.addEventListener('focusout',event=>{if(event.target.form===form)void commit(displayedId,drafts.get(displayedId));});
   detail.addEventListener('keydown',event=>{
     if(event.target.form===form&&event.key==='Enter'&&(event.target.tagName!=='TEXTAREA'||event.ctrlKey||event.metaKey)){event.preventDefault();event.target.blur();}
-    if(event.target.form===form&&event.key==='Escape'){event.preventDefault();const roll=getCurrent();event.target.value=roll[event.target.name]||'';track(event);event.target.blur();}
+    if(event.target.form===form&&event.key==='Escape'){
+      event.preventDefault();const roll=getCurrent();event.target.value=roll[event.target.name]||'';track(event);
+      if(event.target.name==='film')for(const key of ['iso','format']){form.elements[key].value=roll[key]||'';stateFor(roll).values[key]=roll[key]||'';}
+      event.target.blur();
+    }
   });
   form.addEventListener('submit',event=>{event.preventDefault();void commit(displayedId,drafts.get(displayedId));});
   async function applyFields(values) {

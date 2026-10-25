@@ -1,4 +1,5 @@
 import {filmStocks,filmKinds,filmBrands,filterFilmStocks,findFilmStock,filmSelection} from './film-catalog.mjs';
+import {filmDefaults,filmPresentation} from './film-canister.mjs';
 const $=s=>document.querySelector(s);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const image=stock=>`/film-images/${stock.id}.jpg?v=${stock.imageVersion||1}`;
@@ -36,7 +37,7 @@ export function setupFilms({getLibrary,getCurrent,applyInline,openNew,toast}) {
     const license=$('#film-selected-license');license.hidden=!f.imageLicense;if(f.imageLicense){license.href=f.imageLicenseUrl;license.textContent=f.imageLicense+' · 已缩放';}
     const format=$('#film-selected-format');format.innerHTML=f.formats.map(value=>`<option>${value}</option>`).join('');format.value=f.formats.includes(current.format)?current.format:f.formats.includes($('#film-format-filter').value)?$('#film-format-filter').value:f.formats.includes('135')?'135':f.formats[0];
     $('#film-selected-iso').innerHTML=(f.isoChoices||[f.iso]).map(value=>`<option value="${value}">${value}</option>`).join('');$('#film-selected-iso').value=String(f.iso);
-    $('#film-fill-iso').checked=!current.iso||String(current.iso)===String(f.iso);
+    $('#film-fill-iso').checked=!current.iso||findFilmStock(current.film)?.id!==f.id||String(current.iso)===String(f.iso);
     $('#film-selected-iso').disabled=!$('#film-fill-iso').checked;
     $('#film-iso-existing').textContent=current.iso?`当前已填 ${current.iso}；不勾选则保留。`:'当前未填，选用时可一并带入。';
     $('#film-apply').textContent=context.kind==='inline'?'用于当前胶卷':context.kind==='new'?'填入胶卷档案':'用此型号新建胶卷';
@@ -61,18 +62,21 @@ export function setupFilms({getLibrary,getCurrent,applyInline,openNew,toast}) {
       if(context.kind==='inline'){
         if(getCurrent()?.id!==context.rollId)throw new Error('当前胶卷已变化，请重新选择。');
         await applyInline(fields);dialog.close();toast('胶卷型号已保存');
-      } else if(context.kind==='new') {for(const [key,value] of Object.entries(fields))newForm.elements[key].value=value;dialog.close();renderPreviews();}
-      else {dialog.close();openNew(fields);renderPreviews();}
+      } else if(context.kind==='new') {for(const [key,value] of Object.entries(fields))newForm.elements[key].value=value;previousNewFilm=fields.film;dialog.close();renderPreviews();}
+      else {dialog.close();openNew(fields);previousNewFilm=fields.film;renderPreviews();}
     } catch(error){$('#film-picker-error').textContent=error.message;}
     finally{busy=false;$('#film-apply').disabled=!selected;}
   };
   function renderPreviews() {
     for(const [kind,form] of [['inline',inlineForm],['new',newForm]]) {
-      const target=document.querySelector(`[data-film-preview="${kind}"]`),name=form.elements.film.value,stock=findFilmStock(name);
+      const target=document.querySelector(`[data-film-preview="${kind}"]`),name=form.elements.film.value,stock=findFilmStock(name),filmInfo=filmPresentation(Object.fromEntries(new FormData(form)));
       target.hidden=!name;
-      target.innerHTML=stock?`<img src="${image(stock)}" data-film-image alt="${esc(stock.name)} 包装参考图"><span><strong>${esc(stock.name)}</strong><small>${filmKinds[stock.kind]} · ${esc(stock.process)} · 型号参考</small></span>`:'<span><small>自定义型号 · 保留你的原始填写，可随时从型号库选择。</small></span>';
+      target.innerHTML=stock?`<img src="${image(stock)}" data-film-image alt="${esc(stock.name)} 包装参考图"><span><strong>${esc(stock.name)}</strong><small>${filmKinds[stock.kind]} · ${esc(stock.process)} · ${esc(filmInfo.iso)} · ${esc(filmInfo.format)}</small></span>`:'<span><small>自定义型号 · 保留你的原始填写，可随时从型号库选择。</small></span>';
     }
   }
+  let previousNewFilm='';
+  newForm.addEventListener('input',event=>{if(event.target.name==='film'){for(const [key,value] of Object.entries(filmDefaults(event.target.value,previousNewFilm,Object.fromEntries(new FormData(newForm)))))newForm.elements[key].value=value;previousNewFilm=event.target.value;renderPreviews();}});
+  newForm.addEventListener('reset',()=>{previousNewFilm='';});
   for(const form of [newForm,inlineForm])form.addEventListener('input',event=>{if(['film','iso','format'].includes(event.target.name))renderPreviews();});
   return {renderPreviews,open};
 }
