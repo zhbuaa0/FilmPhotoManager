@@ -10,6 +10,7 @@ import { saveCameraImage, cameraImageLimit } from './camera-images.mjs';
 import {filmStocks} from './public/film-stocks.mjs';
 import {ensureFilmImage,ensureReferenceImage} from './film-images.mjs';
 import {canisterPhotos} from './public/canister-photos.mjs';
+import {copyOriginalFiles} from './file-clipboard.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(process.env.LIGHTBOX_DATA_DIR || path.join(root, 'data'));
@@ -60,6 +61,7 @@ function imageType(b) {
 const types = { '.mjs': 'text/javascript; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif', '.bmp':'image/bmp', '.tif':'image/tiff', '.tiff':'image/tiff' };
 const jobs = new Map(), conversions=new Map();
 const orientationJobs = new Map();
+let clipboardBusy=false;
 for (const roll of library.rolls) if (roll.orientationScan?.status === 'running') { roll.orientationScan.status='interrupted'; save(); }
 const versionsOf=p=>p.versions?.length?p.versions:[{id:p.id,name:p.name,mime:p.mime,bytes:p.bytes,file:p.file,thumbnail:p.thumbnail,kind:['image/tiff','image/bmp'].includes(p.mime)?'scan':'image'}];
 async function scanOrientation(roll,job,preference) {
@@ -136,7 +138,7 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
     const parts = url.pathname.split('/').filter(Boolean);
-    if(req.method==='GET'&&url.pathname==='/api/capabilities')return json(res,200,await getOrientationCapabilities());
+    if(req.method==='GET'&&url.pathname==='/api/capabilities')return json(res,200,{...await getOrientationCapabilities(),fileClipboard:process.platform==='win32'});
     if(req.method==='GET'&&url.pathname==='/api/film-stocks')return json(res,200,filmStocks);
     if(req.method==='GET'&&parts[0]==='canister-images'&&parts.length===2&&/^[a-z0-9-]+\.jpg$/.test(parts[1])){
       try{const file=await ensureReferenceImage(parts[1].slice(0,-4),dataDir,canisterPhotos,'canister-images');return fileResponse(res,file,'image/jpeg');}
@@ -196,6 +198,11 @@ const server = http.createServer(async (req, res) => {
     if (parts[0] === 'api' && parts[1] === 'rolls') {
       const roll = library.rolls.find(r => r.id === parts[2]);
       if (!roll) return json(res, 404, { error: '胶卷不存在。' });
+      if(parts[3]==='copy-originals'&&parts.length===4&&req.method==='POST'){
+        if(clipboardBusy)return json(res,409,{error:'正在复制文件，请稍后重试。'});
+        const input=JSON.parse(await body(req));clipboardBusy=true;
+        try{return json(res,200,await copyOriginalFiles(roll,input.ids,input.version,dataDir));}finally{clipboardBusy=false;}
+      }
       if (parts[3] === 'orientation') {
         if(parts.length===4&&req.method==='GET')return json(res,200,roll.orientationScan||null);
         if(parts.length===4&&req.method==='POST') {

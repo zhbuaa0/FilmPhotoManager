@@ -32,6 +32,14 @@
       <div class="heading-row"><div><div class="eyebrow">THE ROLL COLLECTION</div><h1>我的胶卷<span class="accent">.</span></h1><p class="muted">把散落的扫描照片，放回属于它们的那一卷。</p></div><div class="button-group"><button class="secondary" id="import-folder">导入文件夹</button><button class="primary" id="new-roll"><span>＋</span>新建胶卷</button></div></div>
       <div class="stats"><div><span>归档胶卷</span><strong id="stat-rolls">00</strong><small>ROLLS</small></div><div><span>扫描照片</span><strong id="stat-photos">000</strong><small>FRAMES</small></div><div><span>使用相机</span><strong id="stat-cameras">00</strong><small>CAMERAS</small></div><div class="stats-caption"><span>底扫</span><i>—</i><span>成片</span><i>—</i><span>预览</span><p>光留在胶片里，记忆留在这里。</p></div></div>
       <div class="collection-toolbar"><div><h2 id="collection-title">全部胶卷</h2><span id="visible-count">0 卷</span></div><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="搜索名称、相机、胶卷或编号" aria-label="搜索胶卷"></label></div>
+      <div class="collection-filters" aria-label="排序和筛选胶卷">
+        <label>排序<select id="roll-sort"><option value="archive">归档顺序</option><option value="date-desc">日期 · 从新到旧</option><option value="date-asc">日期 · 从旧到新</option><option value="number">编号 · 从小到大</option><option value="number-desc">编号 · 从大到小</option><option value="title">名称</option><option value="photos-desc">照片数量 · 从多到少</option></select></label>
+        <label>相机<select id="filter-camera"><option value="">全部相机</option></select></label>
+        <label>胶卷型号<select id="filter-film"><option value="">全部型号</option></select></label>
+        <label>规格<select id="filter-format"><option value="">全部规格</option></select></label>
+        <label>年份<select id="filter-year"><option value="">全部年份</option></select></label>
+        <button class="secondary" id="reset-roll-filters">重置筛选</button>
+      </div>
       <div id="roll-grid" class="roll-grid"></div>
       <div id="library-empty" class="empty-library"><div class="empty-film" aria-hidden="true"><span>01</span><span>02</span><span>03</span></div><h2>从你的第一卷开始</h2><p>给胶卷一个编号，记下相机与时间，<br>再把冲洗后的电子照片放进来。</p><button class="primary" id="empty-new">＋ 建立第一卷档案</button><small>支持 TIFF / BMP / JPG / PNG / WebP / GIF · 保留原文件</small></div>
     </section>
@@ -59,6 +67,11 @@
         <p id="archive-save-error" class="form-error" role="alert"></p>
       </form>
       <div id="roll-meta" class="archive-source"></div>
+      <div class="photo-selection-toolbar" aria-label="当前胶卷与照片选择">
+        <div class="current-roll-context"><span>当前胶卷</span><strong id="current-roll-context"></strong><small id="selected-count" role="status"></small></div>
+        <div class="selection-actions"><button class="secondary" id="selection-mode" aria-pressed="false">选择照片</button><button class="secondary" id="select-all-photos">全选当前显示</button><button class="secondary" id="clear-photo-selection">取消选择</button><button class="primary" id="copy-originals" disabled>复制原图</button></div>
+        <p id="selection-hint">勾选或 Shift 连选 · Ctrl+A 全选 · Ctrl+C 复制当前显示版本的原文件，到 Windows 文件夹按 Ctrl+V 粘贴</p>
+      </div>
       <div class="photos-toolbar"><div class="view-tabs" role="tablist" aria-label="照片浏览方式"><button role="tab" aria-selected="true" id="grid-tab">▦ 接触印样</button><button role="tab" aria-selected="false" id="film-tab">▤ 胶片浏览</button></div><div class="button-group"><label class="version-choice">显示版本<select id="version-view"><option value="finished">优先成片</option><option value="scan">扫描原片</option></select></label><label class="check-label"><input type="checkbox" id="star-filter">只看精选</label><button class="secondary" id="orientation-check">自动方向识别</button><button class="secondary" id="export-sheet">生成整卷预览</button></div></div>
       <div id="import-progress" class="progress-wrap" hidden><span id="progress-label"></span><progress id="progress-bar" value="0" max="100"></progress></div>
       <div id="photo-empty" class="photo-empty"><div class="eyebrow">ADD YOUR SCANS</div><h2>导入这一卷的照片</h2><p>选择照片或把文件拖到这里，<br>按文件名自然排序，原始照片完整保留。</p><button class="secondary" id="empty-import">选择扫描照片</button><small>支持 TIFF、BMP、JPG、PNG、WebP、GIF，每张不超过 80 MB；THM 自动忽略</small></div>
