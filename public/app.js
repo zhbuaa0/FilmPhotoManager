@@ -95,7 +95,6 @@ function nearestFilmIndex() {
 function updateFilmPosition() {
   const frames = filmFrames(), index = nearestFilmIndex(), r = current();
   if (!r) return;
-  $('.film-stage').style.setProperty('--spool-turn',`${$('#film-strip').scrollLeft / 5}deg`);
   $('#film-position').textContent = frames.length ? `${String(frames[index].dataset.frame).padStart(2,'0')} / ${String(r.photos.length).padStart(2,'0')}` : '无精选照片';
   $('#film-seek').value = index; $('#film-seek').setAttribute('aria-valuetext', frames.length ? `第 ${frames[index].dataset.frame} 帧` : '无照片');
   $('#film-prev').disabled = !frames.length || index === 0; $('#film-next').disabled = !frames.length || index === frames.length - 1;

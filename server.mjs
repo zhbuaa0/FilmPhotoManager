@@ -8,7 +8,8 @@ import { createOrientationDetector, getOrientationCapabilities, applyOrientation
 import { cameraMetadata, resolveRollCamera } from './camera-records.mjs';
 import { saveCameraImage, cameraImageLimit } from './camera-images.mjs';
 import {filmStocks} from './public/film-stocks.mjs';
-import {ensureFilmImage} from './film-images.mjs';
+import {ensureFilmImage,ensureReferenceImage} from './film-images.mjs';
+import {canisterPhotos} from './public/canister-photos.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(process.env.LIGHTBOX_DATA_DIR || path.join(root, 'data'));
@@ -137,6 +138,10 @@ const server = http.createServer(async (req, res) => {
     const parts = url.pathname.split('/').filter(Boolean);
     if(req.method==='GET'&&url.pathname==='/api/capabilities')return json(res,200,await getOrientationCapabilities());
     if(req.method==='GET'&&url.pathname==='/api/film-stocks')return json(res,200,filmStocks);
+    if(req.method==='GET'&&parts[0]==='canister-images'&&parts.length===2&&/^[a-z0-9-]+\.jpg$/.test(parts[1])){
+      try{const file=await ensureReferenceImage(parts[1].slice(0,-4),dataDir,canisterPhotos,'canister-images');return fileResponse(res,file,'image/jpeg');}
+      catch{return json(res,404,{error:'暗盒实拍图暂不可用。'});}
+    }
     if(req.method==='GET'&&parts[0]==='film-images'&&parts.length===2&&/^[a-z0-9-]+\.jpg$/.test(parts[1])){
       try{const file=await ensureFilmImage(parts[1].slice(0,-4),dataDir);return fileResponse(res,file,'image/jpeg');}
       catch{return json(res,404,{error:'参考图暂不可用，请稍后重试；型号仍可选用。'});}
