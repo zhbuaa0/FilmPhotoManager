@@ -4,10 +4,12 @@ import { setupRollNavigation } from './roll-navigation.js';
 import { setupCameras } from './cameras.js';
 import {setupFilms} from './films.js';
 import {filmStocks} from './film-catalog.mjs';
-import {renderFilmCanister,filmPresentation} from './film-canister.mjs';
+import {renderFilmCanister,layoutFilmCanister,filmPresentation} from './film-canister.mjs';
+import {reelExposure,reelScroll} from './film-reel.mjs';
 import { sheetLayout, framePosition } from './sheet-layout.mjs';
 const $ = s => document.querySelector(s);
 let automaticOrientation=true;
+let filmPull=0,filmDimensions=null,filmRenderKey='',filmLayoutPending=false,filmLayoutRAF=0;
 let cameraReturnId=null,cameraReturnForm=false;
 let library = { rolls: [] }, currentId = null, view = 'grid', viewerIndex = 0, editingId = null, uploadBusy = false, filmTimer = null, sheetCanvas = null, sheetGeneration = 0, viewerVersion = null, folderBusy=false, checkedFolder=null;
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -70,43 +72,51 @@ function renderDetail() {
 function renderPhotos() {
   const r = current(); if (!r) return;
   const photos = visiblePhotos(),filmInfo=filmPresentation(r);
+  const reelKey=r.id+'|'+filmInfo.format+'|'+photos.map(p=>p.id).join(',');
+  if(reelKey!==filmRenderKey){filmPull=0;filmRenderKey=reelKey;}
+  filmLayoutPending=true;
   renderFilmCanister($('.film-stage'),r);
   $('#photo-empty').hidden = r.photos.length > 0;
   $('#photo-hint').hidden = !r.photos.length || view !== 'grid';
   $('#photo-grid').hidden = view !== 'grid' || !r.photos.length;
   $('#film-view').hidden = view !== 'film' || !r.photos.length;
   $('#photo-grid').innerHTML = photos.map((p, i) => `<article class="photo-card" draggable="${!uploadBusy}" data-photo="${p.id}" style="animation-delay:${Math.min(i,10)*25}ms"><button class="photo-open" data-open="${p.id}" aria-label="查看第 ${r.photos.indexOf(p)+1} 帧 ${esc(p.name)}"><img src="${imageUrl(p)}" alt="${esc(p.name)}" loading="lazy"></button><div class="photo-caption"><span>${String(r.photos.indexOf(p)+1).padStart(2,'0')} / ${esc(p.name)}</span><button class="star-button ${p.starred ? 'selected' : ''}" data-star="${p.id}" aria-label="${p.starred ? '取消' : '设为'}精选 ${esc(p.name)}" aria-pressed="${p.starred}">${p.starred ? '★' : '☆'}</button></div></article>`).join('');
-  $('#film-strip').innerHTML = `<div class="film-ribbon"><div class="film-leader" aria-hidden="true"><span>LIGHTBOX</span><strong>№ ${esc(r.number)}</strong><small>卷头 / START →</small></div>${photos.map(p => `<div class="film-frame" data-frame="${r.photos.indexOf(p)+1}"><span class="film-edge-label">${esc(r.film || 'LIGHTBOX')}${filmInfo.iso ? ' / ISO ' + esc(filmInfo.iso) : ''} <b>${String(r.photos.indexOf(p)+1).padStart(2,'0')}</b></span><button data-open="${p.id}" aria-label="放大第 ${r.photos.indexOf(p)+1} 帧 ${esc(p.name)}"><img src="${imageUrl(p)}" alt="${esc(p.name)}" loading="lazy" draggable="false"></button><span class="film-frame-caption">${String(r.photos.indexOf(p)+1).padStart(2,'0')} ◁ ${esc(p.name)}</span></div>`).join('')}<div class="film-leader film-tail" aria-hidden="true"><span>LIGHTBOX</span><strong>← END</strong><small>${photos.length} FRAMES</small></div></div>`;
+  $('#film-strip').innerHTML = `<div class="reel-content"><div class="film-ribbon">${[...photos].reverse().map(p => `<div class="film-frame" data-frame="${r.photos.indexOf(p)+1}"><span class="film-edge-label">${esc(filmInfo.brand)} ${esc(filmInfo.iso)} <b>${String(r.photos.indexOf(p)+1).padStart(2,'0')}</b></span><button data-open="${p.id}" aria-label="放大第 ${r.photos.indexOf(p)+1} 帧 ${esc(p.name)}"><img src="${imageUrl(p)}" alt="${esc(p.name)}" loading="lazy" draggable="false"></button><span class="film-frame-caption">${String(r.photos.indexOf(p)+1).padStart(2,'0')} ◁ ${esc(p.name)}</span></div>`).join('')}<div class="reel-tip" aria-hidden="true"><span>${esc(r.number)}</span><small>卷头 →</small></div></div><div class="reel-end-space" aria-hidden="true"></div></div>`;
   $('#film-seek').max = Math.max(0, photos.length - 1); $('#film-seek').disabled = !photos.length;
-  requestAnimationFrame(updateFilmPosition);
+  requestFilmLayout();
   if (!photos.length && r.photos.length) { $('#photo-grid').innerHTML = '<p class="muted">还没有精选照片，点击照片下方的星标来添加。</p>'; $('#film-strip').innerHTML = '<p class="muted">这一卷还没有精选照片。</p>'; }
 }
 function setView(value) { stopFilm(); view = value; $('#grid-tab').setAttribute('aria-selected', value === 'grid'); $('#film-tab').setAttribute('aria-selected', value === 'film'); renderPhotos(); }
 function stopFilm() { clearInterval(filmTimer); filmTimer = null; $('#play-film').textContent = '▷ 自动走片'; }
 function filmFrames() { return [...$('#film-strip').querySelectorAll('.film-frame')]; }
-function nearestFilmIndex() {
-  const strip = $('#film-strip'), ribbon = strip.querySelector('.film-ribbon'), frames = filmFrames();
-  if (!frames.length) return 0;
-  if(strip.scrollLeft<=1)return 0;
-  if(strip.scrollLeft>=strip.scrollWidth-strip.clientWidth-1)return frames.length-1;
-  const center = strip.scrollLeft + strip.clientWidth / 2 - ribbon.offsetLeft;
-  return frames.reduce((best, frame, i) => Math.abs(frame.offsetLeft + frame.offsetWidth / 2 - center) < Math.abs(frames[best].offsetLeft + frames[best].offsetWidth / 2 - center) ? i : best, 0);
+function requestFilmLayout() {
+  filmLayoutPending=true;cancelAnimationFrame(filmLayoutRAF);
+  filmLayoutRAF=requestAnimationFrame(()=>{
+    const r=current(),strip=$('#film-strip');if(!r||view!=='film'||!strip.clientWidth)return;
+    filmDimensions=layoutFilmCanister($('.film-stage'),r);
+    const spacer=strip.querySelector('.reel-end-space');
+    if(spacer)spacer.style.width=Math.max(0,strip.clientWidth-filmDimensions.pitch-filmDimensions.tip)+'px';
+    const maximum=Math.max(0,strip.scrollWidth-strip.clientWidth);
+    strip.scrollTo({left:reelScroll(filmPull,maximum,filmDimensions.pitch,filmFrames().length),behavior:'instant'});
+    filmLayoutPending=false;updateFilmPosition();
+  });
 }
+function nearestFilmIndex() {return Math.max(0,Math.min(filmFrames().length-1,Math.round(filmPull)));}
 function updateFilmPosition() {
-  const frames = filmFrames(), index = nearestFilmIndex(), r = current();
-  if (!r) return;
-  $('#film-position').textContent = frames.length ? `${String(frames[index].dataset.frame).padStart(2,'0')} / ${String(r.photos.length).padStart(2,'0')}` : '无精选照片';
-  $('#film-seek').value = index; $('#film-seek').setAttribute('aria-valuetext', frames.length ? `第 ${frames[index].dataset.frame} 帧` : '无照片');
-  $('#film-prev').disabled = !frames.length || index === 0; $('#film-next').disabled = !frames.length || index === frames.length - 1;
-  $('#play-film').disabled = frames.length < 2;
-  if (filmTimer && index === frames.length - 1) stopFilm();
+  if(filmLayoutPending||!filmDimensions)return;
+  const frames=filmFrames(),r=current(),strip=$('#film-strip');if(!r)return;
+  filmPull=reelExposure(strip.scrollLeft,Math.max(0,strip.scrollWidth-strip.clientWidth),filmDimensions.pitch,frames.length);
+  const index=nearestFilmIndex(),photo=visiblePhotos()[index],frame=photo?r.photos.indexOf(photo)+1:0;
+  $('#film-position').textContent=frames.length?`${String(frame).padStart(2,'0')} / ${String(r.photos.length).padStart(2,'0')}`:'无精选照片';
+  $('#film-seek').value=index;$('#film-seek').setAttribute('aria-valuetext',frames.length?`第 ${frame} 帧`:'无照片');
+  $('#film-prev').disabled=!frames.length||index===0;$('#film-next').disabled=!frames.length||index===frames.length-1;$('#play-film').disabled=frames.length<2;
+  $('.film-stage').dataset.exposedFrames=String(frames.length?1+filmPull:0);
+  if(filmTimer&&index===frames.length-1)stopFilm();
 }
-function scrollFilmTo(index, manual = true, animate = true) {
-  if (manual) stopFilm();
-  const strip = $('#film-strip'), frames = filmFrames(), frame = frames[Math.max(0, Math.min(frames.length - 1, index))];
-  if (!frame) return;
-  const left = strip.querySelector('.film-ribbon').offsetLeft + frame.offsetLeft + frame.offsetWidth / 2 - strip.clientWidth / 2;
-  strip.scrollTo({ left: Math.max(0, Math.min(strip.scrollWidth - strip.clientWidth, left)), behavior: !animate || matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+function scrollFilmTo(index,manual=true,animate=true) {
+  if(manual)stopFilm();const strip=$('#film-strip'),count=filmFrames().length;if(!count||!filmDimensions)return;
+  const exposure=Math.max(0,Math.min(count-1,index)),maximum=Math.max(0,strip.scrollWidth-strip.clientWidth);
+  strip.scrollTo({left:reelScroll(exposure,maximum,filmDimensions.pitch,count),behavior:!animate||matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
 }
 function playFilm() {
   if (filmTimer) return stopFilm();
@@ -231,13 +241,13 @@ $('#film-prev').onclick = () => scrollFilmTo(nearestFilmIndex() - 1);
 $('#film-next').onclick = () => scrollFilmTo(nearestFilmIndex() + 1);
 $('#film-seek').oninput = e => scrollFilmTo(Number(e.target.value), true, false);
 $('#film-strip').addEventListener('scroll', updateFilmPosition, {passive:true});
-new ResizeObserver(()=>{if(view==='film')updateFilmPosition();}).observe($('#film-strip'));
+let lastReelWidth=0;new ResizeObserver(entries=>{const width=entries[0].contentRect.width;if(view==='film'&&width>0&&Math.abs(width-lastReelWidth)>1){lastReelWidth=width;requestFilmLayout();}}).observe($('.film-stage'));
 $('#film-strip').addEventListener('keydown', e => { if(e.target!==e.currentTarget)return; if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();scrollFilmTo(e.key==='Home'?0:e.key==='End'?filmFrames().length-1:nearestFilmIndex()+(e.key==='ArrowRight'?1:-1),true,e.key.startsWith('Arrow'));} });
-$('#play-film').onclick = playFilm; $('#film-strip').onwheel = e => { if(Math.abs(e.deltaY)>Math.abs(e.deltaX)) { e.preventDefault(); $('#film-strip').scrollLeft += e.deltaY; stopFilm(); } };
+$('#play-film').onclick = playFilm; $('#film-strip').onwheel = e => { if(Math.abs(e.deltaY)>Math.abs(e.deltaX)) { e.preventDefault(); $('#film-strip').scrollLeft -= e.deltaY; stopFilm(); } };
 let filmDrag = null, suppressFilmClick = false;
 $('#film-strip').addEventListener('pointerdown', e => { if(e.pointerType!=='mouse'||e.button!==0)return; filmDrag={x:e.clientX,left:$('#film-strip').scrollLeft,moved:false}; });
-$('#film-strip').addEventListener('pointermove', e => { if(!filmDrag)return; const strip=$('#film-strip'),distance=e.clientX-filmDrag.x; if(Math.abs(distance)>5&&!filmDrag.moved){filmDrag.moved=true;strip.setPointerCapture(e.pointerId);strip.style.scrollBehavior='auto';strip.style.cursor='grabbing';strip.classList.add('is-dragging');stopFilm();} if(filmDrag.moved)strip.scrollLeft=filmDrag.left-distance; });
-function endFilmDrag() { if(filmDrag?.moved){suppressFilmClick=true;setTimeout(()=>suppressFilmClick=false,200);} filmDrag=null;$('#film-strip').style.scrollBehavior='';$('#film-strip').style.cursor='';$('#film-strip').classList.remove('is-dragging'); }
+$('#film-strip').addEventListener('pointermove', e => { if(!filmDrag)return; const strip=$('#film-strip'),distance=e.clientX-filmDrag.x; if(Math.abs(distance)>5&&!filmDrag.moved){filmDrag.moved=true;strip.setPointerCapture(e.pointerId);strip.style.scrollBehavior='auto';strip.style.cursor='grabbing';strip.classList.add('is-dragging');$('.film-stage').classList.add('is-pulling');stopFilm();} if(filmDrag.moved)strip.scrollLeft=filmDrag.left-distance; });
+function endFilmDrag() { if(filmDrag?.moved){suppressFilmClick=true;setTimeout(()=>suppressFilmClick=false,200);} filmDrag=null;$('#film-strip').style.scrollBehavior='';$('#film-strip').style.cursor='';$('#film-strip').classList.remove('is-dragging');$('.film-stage').classList.remove('is-pulling'); }
 $('#film-strip').addEventListener('pointerup',endFilmDrag); $('#film-strip').addEventListener('pointercancel',endFilmDrag);
 $('#film-strip').addEventListener('pointerleave',()=>{if(filmDrag&&!filmDrag.moved)filmDrag=null;});
 $('#film-strip').addEventListener('dragstart',e=>e.preventDefault());
