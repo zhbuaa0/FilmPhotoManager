@@ -11,10 +11,10 @@ test('胶卷组合筛选、自然编号排序、缺失日期置后且不修改�
   assert.deepEqual(collectionRolls(rolls,{year:'__missing__',camera:'__missing__'}).map(r=>r.id),['3']);
   assert.deepEqual(rolls.map(r=>r.id),['10','2','3']);
 });
-test('默认按拍摄时间从新到旧，无拍摄日期的胶卷置后且不借用上卷或冲洗日期',()=>{
+test('默认按拍摄时间从旧到新，无拍摄日期的胶卷置后且不借用上卷或冲洗日期',()=>{
   const samples=[{id:'loaded',loadedAt:'2026-10-26'},{id:'old',shotStart:'2024-01-01'},{id:'new',shotEnd:'2025-12-31'},{id:'developed',developedAt:'2026-10-26'},{id:'range',shotStart:'2025-01-01',shotEnd:'2026-01-01'}].map(r=>({...r,photos:[]}));
-  assert.deepEqual(collectionRolls(samples).map(r=>r.id),['new','range','old','loaded','developed']);
-  assert.deepEqual(collectionRolls(samples,{sort:'date-asc'}).map(r=>r.id),['old','range','new','loaded','developed']);
+  assert.deepEqual(collectionRolls(samples).map(r=>r.id),['old','range','new','loaded','developed']);
+  assert.deepEqual(collectionRolls(samples,{sort:'date-desc'}).map(r=>r.id),['new','range','old','loaded','developed']);
   assert.deepEqual(collectionRolls(samples,{year:'__missing__'}).map(r=>r.id),['loaded','developed']);
 });
 test('Shift 连选按可见帧序，支持反向范围、追加和无效锚点',()=>{
