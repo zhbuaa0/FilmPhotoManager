@@ -30,4 +30,10 @@ test('参考图匹配正确机身与 STM 镜头，变焦 U2 和数码 EOS 300D �
   assert.deepEqual(cameraPhotos({photoChoice:'custom',photo:'../../library.json'}),[]);
   assert.equal(cameraPhotos({photoChoice:'custom',photo:'1234-abcd.jpg'})[0].personal,true);
   assert.throws(()=>cameraMetadata({name:'test',model:'test',photoChoice:'https://unknown.example/photo'},[]),/预览图/);
+  const disposable=cameraPresets.filter(c=>c.type==='一次性胶卷机');
+  assert.deepEqual(disposable.map(c=>cameraPhotos(c)[0]?.key),['fujifilm-quicksnap','kodak-funsaver']);
+  assert.equal(inferCameraPhoto({model:'QuickSnap Waterproof'}),'');
+  assert.equal(inferCameraPhoto({model:'QuickSnap Flash 400 Black and White'}),'');
+  assert.equal(inferCameraPhoto({model:'QuickSnap Active'}),'');
+  assert.equal(inferCameraPhoto({model:'FunSaver TRI-X'}),'');
 });

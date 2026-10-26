@@ -29,6 +29,7 @@ export function setupCameras({getLibrary,send,refresh,toast,confirmAction,showCa
   }
   function render() {
     options();$('#count-cameras').textContent=cameras().length;
+    $('#disposable-camera-presets').innerHTML=cameraPresets.filter(c=>c.type==='一次性胶卷机').map(c=>{const photo=cameraPhotos(c)[0];return `<article class="disposable-camera-preset">${photo?`<a class="disposable-camera-photo" href="${esc(photo.src)}" target="_blank" rel="noopener noreferrer" aria-label="查看大图：${esc(c.name)}"><img src="${esc(photo.src)}" alt="${esc(photo.caption)}" loading="lazy"></a>`:''}<div><h3>${esc(c.name)}</h3><p>135 · ${c.key==='fujifilm-quicksnap-400'?'ISO 400':'ISO 800'} · 27 张 · 内置闪光灯</p><button type="button" class="secondary" data-camera-preset="${esc(c.key)}">登记这款相机</button>${photo?`<small>参考图：<a href="${esc(photo.source)}" target="_blank" rel="noopener noreferrer">${esc(photo.author)}</a> · <a href="${esc(photo.licenseUrl)}" target="_blank" rel="noopener noreferrer">${esc(photo.license)}</a> · 已缩放</small>`:''}</div></article>`;}).join('');
     $('#camera-total').textContent=cameras().length;
     $('#camera-in-use').textContent=cameras().filter(c=>c.status==='在用').length;
     $('#camera-roll-total').textContent=getLibrary().rolls.filter(r=>r.camera).length;
@@ -48,9 +49,9 @@ export function setupCameras({getLibrary,send,refresh,toast,confirmAction,showCa
     if(!record.status)form.elements.status.value='在用';
     photoChoice.value=record.photoChoice||'auto';renderPhotoEditor();
   }
-  function openEditor(camera=null) {
-    editingId=camera?.id||null;editingPhoto=camera?.photo||null;clearPhoto();form.reset();populate(camera||{});$('#camera-error').textContent='';
-    $('#camera-dialog-title').textContent=camera?'编辑相机档案':'登记胶片相机';$('#camera-template').value='';$('#camera-template-wrap').hidden=!!camera;
+  function openEditor(camera=null,preset=null) {
+    editingId=camera?.id||null;editingPhoto=camera?.photo||null;clearPhoto();form.reset();populate(camera||preset||{});$('#camera-error').textContent='';
+    $('#camera-dialog-title').textContent=camera?'编辑相机档案':'登记胶片相机';$('#camera-template').value=preset?.key||'';$('#camera-template-wrap').hidden=!!camera;
     dialog.showModal();
   }
   $('#camera-template').innerHTML='<option value="">空白登记 · 自己填写</option>'+cameraPresets.map(c=>`<option value="${c.key}">${esc(c.name)}</option>`).join('');
@@ -65,6 +66,7 @@ export function setupCameras({getLibrary,send,refresh,toast,confirmAction,showCa
   };
   dialog.addEventListener('close',clearPhoto);
   $('#new-camera').onclick=$('#empty-new-camera').onclick=()=>openEditor();
+  $('#disposable-camera-presets').onclick=event=>{const button=event.target.closest('[data-camera-preset]');if(button)openEditor(null,cameraPresets.find(c=>c.key===button.dataset.cameraPreset));};
   $('#camera-search').oninput=render;
   for(const button of document.querySelectorAll('[data-manage-cameras]'))button.onclick=showCameras;
   form.onsubmit=async event=>{

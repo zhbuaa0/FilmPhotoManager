@@ -84,6 +84,7 @@
       <button class="back" id="camera-back">‹ 返回胶卷库</button>
       <div class="heading-row"><div><div class="eyebrow">MY FILM CAMERAS</div><h1>我的相机<span class="accent">.</span></h1><p class="muted">记下机身与镜头，把每一卷和它的相机连起来。</p></div><button class="primary" id="new-camera">＋ 登记相机</button></div>
       <div class="camera-overview"><div><strong id="camera-total">0</strong><span>台已登记</span></div><div><strong id="camera-in-use">0</strong><span>台在用</span></div><div><strong id="camera-roll-total">0</strong><span>卷已记录相机</span></div><p>器材档案保存在本机，随 data 一起备份。</p></div>
+      <section class="disposable-camera-library" aria-labelledby="disposable-camera-title"><div><h2 id="disposable-camera-title">一次性胶卷机</h2><p class="muted">富士、柯达常见款 · 选择型号登记，可修改名称以区分每台相机。</p></div><div id="disposable-camera-presets" class="disposable-camera-presets"></div></section>
       <div class="collection-toolbar"><h2>我的器材架</h2><label class="search"><span aria-hidden="true">⌕</span><input id="camera-search" type="search" placeholder="搜索机身、镜头或编号" aria-label="搜索我的相机"></label></div>
       <div id="camera-grid" class="camera-grid"></div><p id="camera-no-results" class="muted" hidden>没有匹配的相机，试试其他名称或镜头。</p>
       <div id="camera-empty" class="camera-empty"><h2>登记你的第一台胶片相机</h2><p>选择资料模板或从空白开始，填写自己的机身、镜头和使用记录。</p><button class="primary" id="empty-new-camera">＋ 登记第一台</button></div>
@@ -108,7 +109,7 @@
     <div class="form-grid">
       <label class="full">显示名称 *<input name="name" required maxlength="160" placeholder="例如：我的奥林巴斯 U2"></label>
       <label>品牌<input name="brand" maxlength="160" placeholder="Olympus / Canon"></label><label>机身型号 *<input name="model" required maxlength="160" placeholder="例如：EOS Kiss III"></label>
-      <label>机身类型<input name="type" maxlength="160" list="camera-type-options" placeholder="便携定焦 / 单反 / 旁轴"></label><label>胶片规格<input name="format" maxlength="160" list="camera-format-options" placeholder="135 / 120 / 大画幅"></label>
+      <label>机身类型<input name="type" maxlength="160" list="camera-type-options" placeholder="便携定焦 / 一次性胶卷机 / 单反"></label><label>胶片规格<input name="format" maxlength="160" list="camera-format-options" placeholder="135 / 120 / 大画幅"></label>
       <label class="full">当前镜头<input name="lens" maxlength="160" placeholder="例如：EF 50mm f/1.8 STM"></label>
       <label>焦距<input name="focalLength" maxlength="160" placeholder="35mm / 50mm"></label><label>最大光圈<input name="aperture" maxlength="160" placeholder="f/2.8 / f/1.8"></label>
       <label>镜头卡口<input name="mount" maxlength="160" placeholder="固定镜头 / Canon EF"></label><label>快门范围<input name="shutter" maxlength="160" placeholder="例如：30s–1/2000s，B 门"></label>
@@ -118,7 +119,7 @@
       <label class="full">器材资料与个人备注<textarea name="notes" rows="4" maxlength="4000" placeholder="机身规格、镜头特征、保养或维修记录…"></textarea></label>
       <label class="full">资料来源<textarea name="sources" rows="3" placeholder="每行一个官方资料或说明书链接"></textarea></label>
     </div><p id="camera-error" class="form-error" role="alert"></p><div class="dialog-actions"><button type="button" class="secondary close-dialog">取消</button><button id="save-camera" class="primary" type="submit">保存相机档案</button></div></form></dialog>
-  <datalist id="camera-type-options"><option>便携定焦</option><option>自动对焦单反</option><option>手动单反</option><option>旁轴</option><option>中画幅</option><option>其他</option></datalist><datalist id="camera-format-options"><option>135</option><option>120</option><option>110</option><option>大画幅</option></datalist>
+  <datalist id="camera-type-options"><option>便携定焦</option><option>一次性胶卷机</option><option>自动对焦单反</option><option>手动单反</option><option>旁轴</option><option>中画幅</option><option>其他</option></datalist><datalist id="camera-format-options"><option>135</option><option>120</option><option>110</option><option>大画幅</option></datalist>
 
   <dialog id="film-picker" class="film-picker" aria-labelledby="film-picker-title"><div class="dialog-heading"><div><div class="eyebrow">THE FILM STOCK LIBRARY</div><h2 id="film-picker-title">选择胶卷型号</h2></div><button type="button" class="icon-button close-dialog" aria-label="关闭胶卷型号库">×</button></div><p id="film-target" class="muted"></p><p class="film-catalog-hint">常见型号参考 · 包含历史常用型号，非实时在售清单。包装随地区、年份和规格不同；首次载入图片后可离线查看。</p>
     <div class="film-picker-filters"><label class="search"><input id="film-stock-search" type="search" placeholder="搜索型号、中文别名、品牌或 ISO" aria-label="搜索胶卷型号"></label><label><span class="sr-only">筛选胶卷品牌</span><select id="film-brand-filter" aria-label="筛选胶卷品牌"></select></label><label><span class="sr-only">筛选胶卷类型</span><select id="film-kind-filter" aria-label="筛选胶卷类型"></select></label><label><span class="sr-only">筛选胶片规格</span><select id="film-format-filter" aria-label="筛选胶片规格"><option value="">全部规格</option><option>135</option><option>120</option><option>110</option></select></label><label><span class="sr-only">筛选胶卷感光度</span><select id="film-iso-filter" aria-label="筛选胶卷感光度"></select></label></div>
