@@ -30,6 +30,23 @@ const call = async (route, method='GET', value) => {
   return { status: response.status, body: await response.json() };
 };
 
+test('最近选用胶卷跨重启保存，预览不写历史，无关档案修改不改变顺序',async t=>{
+  await start();t.after(async()=>{if(process.exitCode===null)await stop();fs.rmSync(data,{recursive:true,force:true});});
+  const a=await call('/api/rolls','POST',{title:'A',number:'A',film:'乐凯200'});
+  await call('/api/rolls','POST',{title:'B',number:'B',film:'Portra400'});
+  const before=(await call('/api/library')).body.recentFilms;
+  assert.deepEqual(before,['Kodak Portra 400','Lucky C200']);
+  await call('/api/film-stocks');assert.deepEqual((await call('/api/library')).body.recentFilms,before);
+  await call('/api/rolls/'+a.body.id,'PUT',{...a.body,notes:'只修改备注'});
+  assert.deepEqual((await call('/api/library')).body.recentFilms,before);
+  assert.equal((await call('/api/film-recents','POST',{film:''})).status,400);
+  assert.equal((await call('/api/film-recents','POST',{film:[]})).status,400);
+  assert.deepEqual((await call('/api/film-recents','POST',{film:'乐凯 C200'})).body,['Lucky C200','Kodak Portra 400']);
+  await stop();await start();assert.deepEqual((await call('/api/library')).body.recentFilms,['Lucky C200','Kodak Portra 400']);
+  await call('/api/rolls/'+a.body.id,'PUT',{...a.body,film:'我的手工卷'});
+  assert.equal((await call('/api/library')).body.recentFilms[0],'我的手工卷');
+});
+
 test('登记相机、胶卷关联、改名、磁盘恢复和移除后保留历史文字',async t=>{
   await start();t.after(async()=>{if(process.exitCode===null)await stop();fs.rmSync(data,{recursive:true,force:true});});
   assert.deepEqual((await call('/api/cameras')).body,[]);

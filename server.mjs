@@ -11,6 +11,7 @@ import {filmStocks} from './public/film-stocks.mjs';
 import {ensureFilmImage,ensureReferenceImage} from './film-images.mjs';
 import {canisterPhotos} from './public/canister-photos.mjs';
 import {copyOriginalFiles} from './file-clipboard.mjs';
+import {recentFilmNames,rememberFilm} from './public/film-recents.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(process.env.LIGHTBOX_DATA_DIR || path.join(root, 'data'));
@@ -20,6 +21,7 @@ fs.mkdirSync(path.join(dataDir, 'previews'), { recursive: true });
 const indexFile = path.join(dataDir, 'library.json');
 let library = fs.existsSync(indexFile) ? JSON.parse(fs.readFileSync(indexFile, 'utf8')) : { version: 1, rolls: [] };
 library.cameras??=[];
+library.recentFilms=recentFilmNames(library);
 function save() {
   const tmp = indexFile + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(library, null, 2));
@@ -140,6 +142,11 @@ const server = http.createServer(async (req, res) => {
     const parts = url.pathname.split('/').filter(Boolean);
     if(req.method==='GET'&&url.pathname==='/api/capabilities')return json(res,200,{...await getOrientationCapabilities(),fileClipboard:process.platform==='win32'});
     if(req.method==='GET'&&url.pathname==='/api/film-stocks')return json(res,200,filmStocks);
+    if(req.method==='POST'&&url.pathname==='/api/film-recents'){
+      const input=JSON.parse(await body(req));
+      if(typeof input.film!=='string'||!input.film.trim()||input.film.length>160)throw new Error('请选择有效的胶卷型号。');
+      library.recentFilms=rememberFilm(library.recentFilms,input.film);save();return json(res,200,library.recentFilms);
+    }
     if(req.method==='GET'&&parts[0]==='canister-images'&&parts.length===2&&/^[a-z0-9-]+\.jpg$/.test(parts[1])){
       try{const file=await ensureReferenceImage(parts[1].slice(0,-4),dataDir,canisterPhotos,'canister-images');return fileResponse(res,file,'image/jpeg');}
       catch{return json(res,404,{error:'暗盒实拍图暂不可用。'});}
@@ -193,7 +200,7 @@ const server = http.createServer(async (req, res) => {
     if(req.method==='GET'&&parts[0]==='api'&&parts[1]==='imports')return jobs.has(parts[2])?json(res,200,jobs.get(parts[2])):json(res,404,{error:'导入任务不存在。软件重启后可重新导入，已有文件会跳过。'});
     if (req.method === 'POST' && url.pathname === '/api/rolls') {
       const input = JSON.parse(await body(req)); const roll = { id: randomUUID(), ...metadata(input), photos: [], createdAt: new Date().toISOString() };
-      library.rolls.unshift(roll); save(); return json(res, 201, roll);
+      library.rolls.unshift(roll);library.recentFilms=rememberFilm(library.recentFilms,roll.film); save(); return json(res, 201, roll);
     }
     if (parts[0] === 'api' && parts[1] === 'rolls') {
       const roll = library.rolls.find(r => r.id === parts[2]);
@@ -222,7 +229,7 @@ const server = http.createServer(async (req, res) => {
         }
         if(parts[4]==='undo'&&req.method==='POST') { const result=undoOrientationDecisions(roll);save();return json(res,200,result); }
       }
-      if (parts.length === 3 && req.method === 'PUT') { Object.assign(roll, metadata(JSON.parse(await body(req)), roll.id)); save(); return json(res, 200, roll); }
+      if (parts.length === 3 && req.method === 'PUT') { const next=metadata(JSON.parse(await body(req)), roll.id);if(next.film!==roll.film&&next.film)library.recentFilms=rememberFilm(library.recentFilms,next.film);Object.assign(roll,next);save();return json(res,200,roll); }
       if (parts.length === 3 && req.method === 'DELETE') {
         if([...jobs.values()].some(j=>j.status==='running'&&j.rollIds.includes(roll.id)))return json(res,409,{error:'正在导入，请等待完成再删除。'});
         library.rolls = library.rolls.filter(r => r.id !== roll.id); save();

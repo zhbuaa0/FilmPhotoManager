@@ -1,10 +1,11 @@
 import {filmStocks,filmKinds,filmBrands,filterFilmStocks,findFilmStock,filmSelection} from './film-catalog.mjs';
 import {filmDefaults,filmPresentation} from './film-canister.mjs';
+import {recentFilmNames,sortByRecentFilms} from './film-recents.mjs';
 const $=s=>document.querySelector(s);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const image=stock=>`/film-images/${stock.id}.jpg?v=${stock.imageVersion||1}`;
 const credit=stock=>stock.imageLicense?`${stock.imageAuthor} · ${stock.imageLicense}`:stock.imageSourceLabel||stock.sourceLabel;
-export function setupFilms({getLibrary,getCurrent,applyInline,openNew,toast}) {
+export function setupFilms({getLibrary,getCurrent,applyInline,openNew,toast,recordUse}) {
   const dialog=$('#film-picker'),newForm=$('#roll-form'),inlineForm=$('#roll-inline-form');
   let context=null,selected=null,busy=false;
   $('#count-film-stocks').textContent=filmStocks.length;
@@ -14,8 +15,11 @@ export function setupFilms({getLibrary,getCurrent,applyInline,openNew,toast}) {
   document.addEventListener('error',event=>{const img=event.target;if(img instanceof HTMLImageElement&&img.dataset.filmImage!==undefined&&!img.src.endsWith('/film-placeholder.svg')){img.src='/film-placeholder.svg';img.alt='参考图暂不可用，型号仍可选用';}},true);
   function values() {return context?.kind==='inline'?Object.fromEntries(new FormData(inlineForm)):context?.kind==='new'?Object.fromEntries(new FormData(newForm)):{};}
   function renderGrid() {
-    const stocks=filterFilmStocks({query:$('#film-stock-search').value,brand:$('#film-brand-filter').value,kind:$('#film-kind-filter').value,format:$('#film-format-filter').value,iso:$('#film-iso-filter').value});
-    $('#film-result-count').textContent=`${stocks.length} / ${filmStocks.length} 款型号`;
+    const recent=recentFilmNames(getLibrary()),stocks=sortByRecentFilms(filterFilmStocks({query:$('#film-stock-search').value,brand:$('#film-brand-filter').value,kind:$('#film-kind-filter').value,format:$('#film-format-filter').value,iso:$('#film-iso-filter').value}),recent);
+    $('#film-result-count').textContent=`${stocks.length} / ${filmStocks.length} 款型号 · 最近选用优先`;
+    const shortcuts=recent.map(findFilmStock).filter(Boolean).slice(0,4);
+    $('#film-recent-choices').hidden=!shortcuts.length;
+    $('#film-recent-choices').innerHTML='<span>最近选用</span>'+shortcuts.map(stock=>`<button type="button" class="secondary" data-select-film="${stock.id}" aria-pressed="${selected?.id===stock.id}">${esc(stock.name)}</button>`).join('');
     $('#film-stock-grid').innerHTML=stocks.map(stock=>{
       const used=getLibrary().rolls.filter(r=>findFilmStock(r.film)?.id===stock.id).length;
       return `<article class="film-stock-card ${selected?.id===stock.id?'selected':''}"><button type="button" data-select-film="${stock.id}" aria-label="选择 ${esc(stock.name)}" aria-pressed="${selected?.id===stock.id}"><div class="film-stock-image"><img src="${image(stock)}" data-film-image alt="${esc(stock.name)} 包装参考图" loading="lazy"></div><div class="film-stock-info"><span>${esc(stock.brand)} · ${filmKinds[stock.kind]}</span><h3>${esc(stock.model)}</h3><p>ISO / EI ${stock.isoChoices?.join(' / ')||stock.iso} · ${stock.formats.join(' / ')}</p><small>${esc(stock.process)}${stock.legacy?' · 历史常用':''}${used?` · 已记录 ${used} 卷`:''}</small></div></button><a class="film-stock-credit" href="${esc(stock.imageSource||stock.source)}" target="_blank" rel="noopener noreferrer">${esc(credit(stock))} ↗</a></article>`;
@@ -53,7 +57,8 @@ export function setupFilms({getLibrary,getCurrent,applyInline,openNew,toast}) {
   $('#film-stock-search').oninput=renderGrid;
   for(const id of ['film-brand-filter','film-kind-filter','film-format-filter','film-iso-filter'])$('#'+id).onchange=renderGrid;
   $('#film-reset-filters').onclick=()=>{$('#film-stock-search').value='';for(const id of ['film-brand-filter','film-kind-filter','film-format-filter','film-iso-filter'])$('#'+id).value='';renderGrid();};
-  $('#film-stock-grid').onclick=event=>{const button=event.target.closest('[data-select-film]');if(!button)return;selected=filmStocks.find(f=>f.id===button.dataset.selectFilm);$('#film-picker-error').textContent='';renderGrid();renderSelection();if(matchMedia('(max-width:760px)').matches)$('#film-selected-panel').scrollIntoView({block:'nearest'});};
+  function selectStock(event){const button=event.target.closest('[data-select-film]');if(!button)return;selected=filmStocks.find(f=>f.id===button.dataset.selectFilm);$('#film-picker-error').textContent='';renderGrid();renderSelection();if(matchMedia('(max-width:760px)').matches)$('#film-selected-panel').scrollIntoView({block:'nearest'});}
+  $('#film-stock-grid').onclick=$('#film-recent-choices').onclick=selectStock;
   $('#film-fill-iso').onchange=()=>{$('#film-selected-iso').disabled=!$('#film-fill-iso').checked;};
   $('#film-apply').onclick=async()=>{
     if(!selected||busy)return;busy=true;$('#film-apply').disabled=true;$('#film-picker-error').textContent='';
@@ -61,9 +66,9 @@ export function setupFilms({getLibrary,getCurrent,applyInline,openNew,toast}) {
       const fields=filmSelection(selected.id,{format:$('#film-selected-format').value,iso:$('#film-selected-iso').value,fillIso:$('#film-fill-iso').checked});
       if(context.kind==='inline'){
         if(getCurrent()?.id!==context.rollId)throw new Error('当前胶卷已变化，请重新选择。');
-        await applyInline(fields);dialog.close();toast('胶卷型号已保存');
-      } else if(context.kind==='new') {for(const [key,value] of Object.entries(fields))newForm.elements[key].value=value;previousNewFilm=fields.film;dialog.close();renderPreviews();}
-      else {dialog.close();openNew(fields);previousNewFilm=fields.film;renderPreviews();}
+        await applyInline(fields);await recordUse(fields.film);dialog.close();toast('胶卷型号已保存');
+      } else if(context.kind==='new') {await recordUse(fields.film);for(const [key,value] of Object.entries(fields))newForm.elements[key].value=value;previousNewFilm=fields.film;dialog.close();renderPreviews();}
+      else {await recordUse(fields.film);dialog.close();openNew(fields);previousNewFilm=fields.film;renderPreviews();}
     } catch(error){$('#film-picker-error').textContent=error.message;}
     finally{busy=false;$('#film-apply').disabled=!selected;}
   };
