@@ -10,8 +10,9 @@ import { saveCameraImage, cameraImageLimit } from './camera-images.mjs';
 import {filmStocks} from './public/film-stocks.mjs';
 import {ensureFilmImage,ensureReferenceImage} from './film-images.mjs';
 import {canisterPhotos} from './public/canister-photos.mjs';
-import {copyOriginalFiles} from './file-clipboard.mjs';
+import {copyOriginalFiles,copyFilesToClipboard,planFileCopy} from './file-clipboard.mjs';
 import {recentFilmNames,rememberFilm} from './public/film-recents.mjs';
+import {createRedEyeService,hasCorrection} from './red-eye-service.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(process.env.LIGHTBOX_DATA_DIR || path.join(root, 'data'));
@@ -66,6 +67,7 @@ const orientationJobs = new Map();
 let clipboardBusy=false;
 for (const roll of library.rolls) if (roll.orientationScan?.status === 'running') { roll.orientationScan.status='interrupted'; save(); }
 const versionsOf=p=>p.versions?.length?p.versions:[{id:p.id,name:p.name,mime:p.mime,bytes:p.bytes,file:p.file,thumbnail:p.thumbnail,kind:['image/tiff','image/bmp'].includes(p.mime)?'scan':'image'}];
+const redEye=createRedEyeService({getLibrary:()=>library,save,dataDir,versionsOf});
 async function scanOrientation(roll,job,preference) {
   const detector=createOrientationDetector(dataDir);
   try {
@@ -140,7 +142,8 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
     const parts = url.pathname.split('/').filter(Boolean);
-    if(req.method==='GET'&&url.pathname==='/api/capabilities')return json(res,200,{...await getOrientationCapabilities(),fileClipboard:process.platform==='win32'});
+    if(req.method==='GET'&&url.pathname==='/api/capabilities')return json(res,200,{...await getOrientationCapabilities(),fileClipboard:process.platform==='win32',redEye:true});
+    if(req.method==='GET'&&url.pathname==='/api/red-eye/active')return json(res,200,redEye.active());
     if(req.method==='GET'&&url.pathname==='/api/film-stocks')return json(res,200,filmStocks);
     if(req.method==='POST'&&url.pathname==='/api/film-recents'){
       const input=JSON.parse(await body(req));
@@ -205,6 +208,16 @@ const server = http.createServer(async (req, res) => {
     if (parts[0] === 'api' && parts[1] === 'rolls') {
       const roll = library.rolls.find(r => r.id === parts[2]);
       if (!roll) return json(res, 404, { error: '胶卷不存在。' });
+      if(parts[3]==='red-eye'){
+        if(parts.length===4&&req.method==='GET')return json(res,200,redEye.getJob(roll,url.searchParams.get('job')));
+        if(parts.length===4&&req.method==='POST')return json(res,202,redEye.start(roll,JSON.parse(await body(req))));
+        if(parts.length===5&&req.method==='POST'&&['cancel','undo'].includes(parts[4])){const input=JSON.parse(await body(req));return json(res,200,parts[4]==='cancel'?redEye.cancel(roll,input.jobId):redEye.undo(roll,input.jobId));}
+      }
+      if(parts[3]==='copy-corrected'&&parts.length===4&&req.method==='POST'){
+        if(clipboardBusy)return json(res,409,{error:'正在复制文件，请稍后重试。'});
+        const input=JSON.parse(await body(req));clipboardBusy=true;
+        try{await planFileCopy(roll,input.ids,input.version,dataDir);const files=[];for(const id of input.ids){const p=roll.photos.find(p=>p.id===id),list=versionsOf(p),v=input.versionId&&input.ids.length===1?list.find(v=>v.id===input.versionId):list.find(v=>v.kind===input.version)||list[0];if(!v||!hasCorrection(p.redEye?.[v.id]))throw new Error('部分所选照片还没有修正版，请先去红眼或调整选择。');files.push({source:await redEye.rendered(p,v),name:path.parse(v.name||p.name).name+'-去红眼.tif',owned:true});}return json(res,200,await copyFilesToClipboard(files,dataDir));}finally{clipboardBusy=false;}
+      }
       if(parts[3]==='copy-originals'&&parts.length===4&&req.method==='POST'){
         if(clipboardBusy)return json(res,409,{error:'正在复制文件，请稍后重试。'});
         const input=JSON.parse(await body(req));clipboardBusy=true;
@@ -273,6 +286,14 @@ const server = http.createServer(async (req, res) => {
       }
       const photo = roll.photos.find(p => p.id === parts[4]);
       if (parts[3] === 'photos' && photo) {
+        if(['red-eye','red-eye-export','red-eye-eye'].includes(parts[5])){
+          const variants=versionsOf(photo),wanted=url.searchParams.get('version'),version=variants.find(v=>v.id===wanted)||(!wanted?(variants.find(v=>v.kind==='finished')||variants[0]):null);if(!version)return json(res,404,{error:'这个照片版本不存在。'});
+          if(parts[5]==='red-eye'&&req.method==='GET')return json(res,200,photo.redEye?.[version.id]||null);
+          if(parts[5]==='red-eye'&&req.method==='PUT')return json(res,200,await redEye.edit(roll,photo,version,JSON.parse(await body(req))));
+          if(parts[5]==='red-eye'&&req.method==='DELETE')return json(res,200,redEye.undoPhoto(photo,version,JSON.parse(await body(req))));
+          if(parts[5]==='red-eye-export'&&req.method==='GET'){if(!hasCorrection(photo.redEye?.[version.id]))throw new Error('这个版本尚无已启用的红眼修正。');return fileResponse(res,await redEye.rendered(photo,version),'image/tiff',path.parse(version.name||photo.name).name+'-去红眼.tif');}
+          if(parts[5]==='red-eye-eye'&&req.method==='GET')return fileResponse(res,await redEye.rendered(photo,version,{preview:256,regionId:url.searchParams.get('region'),before:url.searchParams.get('before')==='1'}),'image/jpeg');
+        }
         if(req.method==='GET'&&['original','display','thumbnail'].includes(parts[5])){
           const variants=versionsOf(photo),wanted=url.searchParams.get('version');if(wanted&&!variants.some(v=>v.id===wanted))return json(res,404,{error:'这个照片版本不存在。'});
           const version=variants.find(v=>v.id===wanted)||variants.find(v=>v.kind==='finished')||variants[0];
@@ -280,6 +301,8 @@ const server = http.createServer(async (req, res) => {
           if(parts[5]==='original')return fileResponse(res,source,version.mime,version.name);
           const requestedRotation=url.searchParams.get('rotation'),rotation=requestedRotation===null?(photo.rotation||0):Number(requestedRotation),small=parts[5]==='thumbnail';
           if(![0,90,180,270].includes(rotation))throw new Error('旋转角度无效。');
+          if(url.searchParams.get('redEye')==='0'&&photo.redEye?.[version.id])return fileResponse(res,await redEye.rendered(photo,version,{rotation,preview:small?1600:4000,before:true}),'image/jpeg');
+          if(url.searchParams.get('redEye')!=='0'&&hasCorrection(photo.redEye?.[version.id]))return fileResponse(res,await redEye.rendered(photo,version,{rotation,preview:small?1600:4000}),'image/jpeg');
           if(small&&!rotation)return fileResponse(res,path.join(dataDir,'photos',version.thumbnail||photo.thumbnail),'image/jpeg');
           if(!small&&!['image/tiff','image/bmp'].includes(version.mime)&&!rotation)return fileResponse(res,source,version.mime);
           const input=small?path.join(dataDir,'photos',version.thumbnail||photo.thumbnail):source;

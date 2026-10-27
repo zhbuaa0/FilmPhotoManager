@@ -3,6 +3,7 @@ import { setupOrientation } from './orientation-ui.js';
 import { setupRollNavigation } from './roll-navigation.js';
 import { setupCameras } from './cameras.js';
 import {setupFilms} from './films.js';
+import {setupRedEye} from './red-eye-ui.js';
 import {filmStocks,findFilmStock} from './film-catalog.mjs';
 import {renderFilmCanister,layoutFilmCanister,filmPresentation} from './film-canister.mjs';
 import {reelExposure,reelScroll} from './film-reel.mjs';
@@ -22,7 +23,8 @@ const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const current = () => library.rolls.find(r => r.id === currentId);
 const photoVersions = p => p.versions?.length ? p.versions : [{id:p.id,name:p.name,mime:p.mime,bytes:p.bytes,thumbnail:p.thumbnail,file:p.file,kind:['image/tiff','image/bmp'].includes(p.mime)?'scan':'image'}];
 const preferredVersion = p => photoVersions(p).find(v=>v.kind===($('#version-view')?.value||'finished'))||photoVersions(p)[0];
-const imageUrl = p => p.rotation ? `/api/rolls/${library.rolls.find(r=>r.photos.some(f=>f.id===p.id))?.id}/photos/${p.id}/thumbnail?version=${preferredVersion(p).id}&rotation=${p.rotation}` : '/photos/' + (preferredVersion(p).thumbnail || p.thumbnail || p.file);
+const hasRedEye=(p,v=preferredVersion(p))=>!!p?.redEye?.[v.id]?.regions?.some(r=>r.enabled&&(r.strength??1)>0);
+const imageUrl=p=>{const v=preferredVersion(p),r=library.rolls.find(r=>r.photos.includes(p));if(hasRedEye(p,v))return '/api/rolls/'+r.id+'/photos/'+p.id+'/thumbnail?version='+v.id+'&rotation='+(p.rotation||0)+'&redEye='+($('#show-red-eye').checked?1:0)+'&edit='+p.redEye[v.id].revision;return p.rotation?'/api/rolls/'+r.id+'/photos/'+p.id+'/thumbnail?version='+v.id+'&rotation='+p.rotation+'&redEye=0':'/photos/'+(v.thumbnail||p.thumbnail||p.file);};
 const rollNavigation=setupRollNavigation({getRolls:()=>collectionRolls(library.rolls,{sort:$('#roll-sort').value}),getCurrent:current,openRoll,imageUrl,isBusy:()=>uploadBusy});
 const date = d => d ? d.replaceAll('-', '.') : '未记录';
 const period = r => r.shotStart || r.shotEnd ? `${date(r.shotStart)} — ${date(r.shotEnd)}` : '拍摄时间未记录';
@@ -80,6 +82,8 @@ function updatePhotoSelection(){
   $('#selection-mode').setAttribute('aria-pressed',selectionMode);$('#selection-mode').textContent=selectionMode?'完成选择':'选择照片';
   $('#select-all-photos').disabled=!valid.size;$('#clear-photo-selection').disabled=!selectedPhotos.size;
   $('#copy-originals').disabled=!selectedPhotos.size||copyBusy||!fileClipboard;$('#copy-originals').textContent=copyBusy?'正在复制…':`复制原图${selectedPhotos.size?' ('+selectedPhotos.size+')':''}`;
+  $('#red-eye-selected').disabled=!selectedPhotos.size||uploadBusy;$('#red-eye-selected').textContent='选中去红眼'+(selectedPhotos.size?' ('+selectedPhotos.size+')':'');
+  $('#copy-corrected').disabled=!fileClipboard||!selectedPhotos.size||!r.photos.filter(p=>selectedPhotos.has(p.id)).every(p=>hasRedEye(p));
   $('#copy-originals').title=fileClipboard?'复制当前显示版本对应的原文件，原始方向与画质保持不变':'此功能需要 Windows 本机服务';
   $('#detail-view').classList.toggle('selecting-photos',selectionMode);
   document.querySelectorAll('[data-select-photo]').forEach(button=>{const selected=selectedPhotos.has(button.dataset.selectPhoto);button.setAttribute('aria-pressed',selected);button.textContent=selected?'✓':'＋';button.closest('.photo-card,.film-frame')?.classList.toggle('photo-is-selected',selected);});
@@ -103,6 +107,7 @@ function renderDetail() {
   renderArchiveLabels(r);inlineArchive.render(r);filmUI.renderPreviews();
   rollNavigation.render();
   $('#roll-meta').textContent=r.sourceFolder?`${r.storageMode==='reference'?'引用原目录，请保留原文件夹':'原图已复制到光匣'} · ${r.sourceFolder}`:'';
+  $('#red-eye-roll').disabled=!r.photos.length||uploadBusy;$('#red-eye-review').disabled=!r.photos.length;
   renderPhotos(); $('#export-sheet').disabled = !r.photos.length || uploadBusy; $('#orientation-check').disabled = !r.photos.length || uploadBusy; $('#orientation-check').textContent=automaticOrientation?'自动方向识别':'方向核对';
 }
 function renderPhotos() {
@@ -225,11 +230,12 @@ function renderViewer() {
   const photos = visiblePhotos(), p = photos[viewerIndex]; if (!p) { $('#viewer-dialog').close(); return; }
   const r = current(), index = r.photos.indexOf(p)+1, variants=photoVersions(p),version=variants.find(v=>v.id===viewerVersion)||preferredVersion(p);viewerVersion=version.id;
   $('#viewer-version').innerHTML=variants.map(v=>`<option value="${v.id}">${v.kind==='finished'?'成片':v.kind==='scan'?'扫描原片':'照片'} · ${esc(v.mime?.split('/')[1]?.toUpperCase()||'IMAGE')} · ${esc(v.name)}</option>`).join('');$('#viewer-version').value=viewerVersion;
-  $('#viewer-img').src=`/api/rolls/${r.id}/photos/${p.id}/display?version=${version.id}&rotation=${p.rotation||0}&preview=2`;$('#viewer-img').alt=version.name;$('#viewer-img').style.opacity='.45';$('#viewer-error').textContent='正在载入照片…';
+  $('#viewer-img').src=`/api/rolls/${r.id}/photos/${p.id}/display?version=${version.id}&rotation=${p.rotation||0}&redEye=${$('#viewer-show-red-eye').checked?1:0}&edit=${p.redEye?.[version.id]?.revision||''}`;$('#viewer-img').alt=version.name;$('#viewer-img').style.opacity='.45';$('#viewer-error').textContent='正在载入照片…';
   $('#viewer-label').textContent = `${r.title} / FRAME ${String(index).padStart(2,'0')}`;
   $('#viewer-info').textContent = `${version.name} · ${(version.bytes/1024/1024).toFixed(1)} MB · ${viewerIndex+1} / ${photos.length}`;
   $('#viewer-star').textContent = p.starred ? '★ 已精选' : '☆ 精选';
   $('#download-original').href=`/api/rolls/${r.id}/photos/${p.id}/original?version=${version.id}`;$('#download-original').download=version.name;$('#download-original').textContent=version.mime==='image/tiff'?'下载原始 TIFF':'下载当前原图';
+  $('#download-corrected').hidden=!hasRedEye(p,version);$('#download-corrected').href='/api/rolls/'+r.id+'/photos/'+p.id+'/red-eye-export?version='+version.id+'&edit='+(p.redEye?.[version.id]?.revision||'');
   $('#viewer-prev').disabled = viewerIndex === 0; $('#viewer-next').disabled = viewerIndex === photos.length-1;
 }
 function stepViewer(step) { const next = viewerIndex + step; if (next >= 0 && next < visiblePhotos().length) { viewerIndex = next;viewerVersion=null; renderViewer(); } }
@@ -404,6 +410,9 @@ $('#detail-view').addEventListener('dragleave',e=>{if(!$('#detail-view').contain
 $('#detail-view').addEventListener('drop',e=>{if(e.dataTransfer.files.length){e.preventDefault();$('#detail-view').classList.remove('drop-active');importPhotos(e.dataTransfer.files);}});
 window.addEventListener('beforeunload',e=>{if(uploadBusy){e.preventDefault();e.returnValue='';}});
 api('/api/imports/active').then(job=>{if(job){$('#folder-dialog').showModal();followImport(job.id);}}).catch(()=>{});
+$('#show-red-eye').onchange=()=>{renderPhotos();if($('#viewer-dialog').open)renderViewer();};
+$('#viewer-show-red-eye').onchange=renderViewer;
+setupRedEye({getLibrary:()=>library,getCurrent:current,getSelection:()=>[...selectedPhotos],getVersion:preferredVersion,getViewer:()=>{const p=visiblePhotos()[viewerIndex];return p?{photo:p,version:photoVersions(p).find(v=>v.id===viewerVersion)||preferredVersion(p)}:null;},refresh,onChange:()=>{updatePhotoSelection();if($('#viewer-dialog').open)renderViewer();},send,toast});
 setupOrientation({getCurrent:current,getVersions:photoVersions,refresh,toast,stopFilm});
 const cameraUI=setupCameras({getLibrary:()=>library,send,refresh,toast,confirmAction,showCameras,showCameraRolls:camera=>{showLibrary();$('#search').value=camera.name;renderLibrary();window.scrollTo({top:0,behavior:'instant'});}});
 const filmUI=setupFilms({getLibrary:()=>library,recordUse:async film=>{library.recentFilms=await send('/api/film-recents','POST',{film});renderFilmOptions();updateCollectionFilters();},getCurrent:current,applyInline:values=>inlineArchive.applyFields(values),openNew:values=>{openForm();for(const [key,value] of Object.entries(values))$('#roll-form').elements[key].value=value;},toast});

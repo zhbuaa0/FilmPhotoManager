@@ -37,7 +37,11 @@ export async function prepareFileDrop(files,dataDir){
 }
 export async function copyOriginalFiles(roll,ids,preference,dataDir,{platform=process.platform,execute=run}={}){
   if(platform!=='win32')throw new Error('文件复制到系统剪贴板目前支持 Windows；其他平台可在放大窗口下载原文件。');
-  const files=await planFileCopy(roll,ids,preference,dataDir),paths=await prepareFileDrop(files,dataDir);
+  return copyFilesToClipboard(await planFileCopy(roll,ids,preference,dataDir),dataDir,{platform,execute});
+}
+export async function copyFilesToClipboard(files,dataDir,{platform=process.platform,execute=run}={}){
+  if(platform!=='win32')throw new Error('文件复制到系统剪贴板目前支持 Windows。');
+  const paths=await prepareFileDrop(files,dataDir);
   const temp=await fs.mkdtemp(path.join(os.tmpdir(),'lightbox-clipboard-')),manifest=path.join(temp,'files.json');
   try{
     await fs.writeFile(manifest,JSON.stringify(paths),'utf8');
