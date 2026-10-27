@@ -24,6 +24,16 @@ test('四个显示方向的点选往返与 YuNet 输出坐标解码',()=>{
   const outputs={};for(const stride of [8,16,32]){const n=(32/stride)**2;for(const [prefix,size] of [['cls',1],['obj',1],['bbox',4],['kps',10]])outputs[prefix+'_'+stride]={data:new Float32Array(n*size)};}
   outputs.cls_8.data[5]=.99;outputs.obj_8.data[5]=.99;outputs.bbox_8.data[20]=.5;outputs.bbox_8.data[21]=.5;outputs.bbox_8.data[22]=Math.log(2);outputs.bbox_8.data[23]=Math.log(2);const f=decodeYuNet(outputs,32,32)[0];assert.ok(Math.abs(f.x-4)<1e-5&&Math.abs(f.y-4)<1e-5);assert.ok(Math.abs(f.w-16)<1e-5);
 });
+test('真实扫描偏色回归：中和红瞳孔不残留绿眼，保留高光和未选区域',()=>{
+  for(const depth of [8,16]){
+    const unit=depth===16?257:1,raw=depth===16?new Uint16Array(9*9*3):Buffer.alloc(9*9*3);
+    for(let p=0;p<81;p++)raw.set([230*unit,100*unit,20*unit],p*3);
+    const white=(4*9+5)*3;raw.set([255*unit,255*unit,255*unit],white);const original=raw.slice();
+    correctPixels(raw,9,9,[{x:4/9,y:4/9,rx:3/9,ry:3/9,enabled:true,strength:1}],depth);
+    const centre=(4*9+4)*3;assert.deepEqual([...raw.slice(centre,centre+3)],[60*unit,60*unit,60*unit]);assert.deepEqual([...raw.slice(white,white+3)],[255*unit,255*unit,255*unit]);assert.deepEqual([...raw.slice(0,3)],[...original.slice(0,3)]);
+    const zero=original.slice();correctPixels(zero,9,9,[{x:4/9,y:4/9,rx:3/9,ry:3/9,enabled:true,strength:0}],depth);assert.deepEqual(zero,original);
+  }
+});
 test('16-bit TIFF 无损修正版保留位深、原尺寸和选区外像素，原文件不改写',async t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'red-eye16-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const source=path.join(root,'中文原片.tif'),target=path.join(root,'修正版.tif');
   await sharp(pixels(16),{raw:{width:160,height:100,channels:3}}).toColourspace('rgb16').tiff({compression:'deflate'}).toFile(source);

@@ -5,7 +5,7 @@ import sharp from 'sharp';
 import {openImage} from './image-preview.mjs';
 import {correctPixels,findPupil,validateRegions} from './red-eye-mask.mjs';
 import {attachTiffProfile} from './tiff-profile.mjs';
-export const redEyeEngine='yunet-colour-v1';
+export const redEyeEngine='yunet-colour-v2';
 let srgbProfile;
 async function defaultProfile(){srgbProfile??=sharp({create:{width:1,height:1,channels:3,background:'#fff'}}).withIccProfile('srgb').png().toBuffer().then(b=>sharp(b).metadata()).then(m=>m.icc);return srgbProfile;}
 export async function sourceHash(file){const hash=createHash('sha256');for await(const chunk of fs.createReadStream(file))hash.update(chunk);return hash.digest('hex');}

@@ -1,5 +1,5 @@
 // Independent local colour/shape classifier. Coordinates are EXIF-upright, before display rotation.
-export const redEyeRenderVersion='colour-v1';
+export {redEyeRenderVersion} from './public/red-eye-version.mjs';
 export function redness(r,g,b){return Math.max(0,Math.min(1,(r-Math.max(g,b)-12)/80))*Math.max(0,Math.min(1,(r/(Math.max(g,b)+10)-1.25)/1.2));}
 export function findPupil(rgb,width,height,{x,y,radius,faceScore=1,manual=false}){
   const left=Math.max(0,Math.floor(x-radius)),top=Math.max(0,Math.floor(y-radius*.8)),right=Math.min(width,Math.ceil(x+radius)),bottom=Math.min(height,Math.ceil(y+radius*.8));
@@ -34,7 +34,9 @@ export function correctPixels(data,width,height,regions,depth=8){
       // Once an eye is confirmed, include its pale red fringe; detection remains stricter.
       const other=Math.max(g,b),weight=Math.max(0,Math.min(1,(r-other-3)/18))*Math.max(0,Math.min(1,(r/(other+1)-1.03)/.18));if(weight<=0)continue;
       const feather=Math.min(1,(1-d)/.25),alpha=feather*weight*(region.strength??1),target=Math.min(data[p],(data[p+1]+data[p+2])*.5);
-      data[p]=Math.round(data[p]*(1-alpha)+target*alpha);
+      // Neutralise the confirmed red reflection in all channels. Leaving G/B untouched
+      // produced green pupils in real film scans with unequal green and blue values.
+      for(let c=0;c<3;c++)data[p+c]=Math.round(data[p+c]*(1-alpha)+target*alpha);
     }
   }
   return data;

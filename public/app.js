@@ -1,3 +1,4 @@
+import {redEyeRenderVersion} from './red-eye-version.mjs';
 import { setupInlineArchive } from './inline-archive.js';
 import { setupOrientation } from './orientation-ui.js';
 import { setupRollNavigation } from './roll-navigation.js';
@@ -24,7 +25,7 @@ const current = () => library.rolls.find(r => r.id === currentId);
 const photoVersions = p => p.versions?.length ? p.versions : [{id:p.id,name:p.name,mime:p.mime,bytes:p.bytes,thumbnail:p.thumbnail,file:p.file,kind:['image/tiff','image/bmp'].includes(p.mime)?'scan':'image'}];
 const preferredVersion = p => photoVersions(p).find(v=>v.kind===($('#version-view')?.value||'finished'))||photoVersions(p)[0];
 const hasRedEye=(p,v=preferredVersion(p))=>!!p?.redEye?.[v.id]?.regions?.some(r=>r.enabled&&(r.strength??1)>0);
-const imageUrl=p=>{const v=preferredVersion(p),r=library.rolls.find(r=>r.photos.includes(p));if(hasRedEye(p,v))return '/api/rolls/'+r.id+'/photos/'+p.id+'/thumbnail?version='+v.id+'&rotation='+(p.rotation||0)+'&redEye='+($('#show-red-eye').checked?1:0)+'&edit='+p.redEye[v.id].revision;return p.rotation?'/api/rolls/'+r.id+'/photos/'+p.id+'/thumbnail?version='+v.id+'&rotation='+p.rotation+'&redEye=0':'/photos/'+(v.thumbnail||p.thumbnail||p.file);};
+const imageUrl=p=>{const v=preferredVersion(p),r=library.rolls.find(r=>r.photos.includes(p));if(hasRedEye(p,v))return '/api/rolls/'+r.id+'/photos/'+p.id+'/thumbnail?version='+v.id+'&rotation='+(p.rotation||0)+'&redEye='+($('#show-red-eye').checked?1:0)+'&edit='+p.redEye[v.id].revision+'&renderer='+redEyeRenderVersion;return p.rotation?'/api/rolls/'+r.id+'/photos/'+p.id+'/thumbnail?version='+v.id+'&rotation='+p.rotation+'&redEye=0':'/photos/'+(v.thumbnail||p.thumbnail||p.file);};
 const rollNavigation=setupRollNavigation({getRolls:()=>collectionRolls(library.rolls,{sort:$('#roll-sort').value}),getCurrent:current,openRoll,imageUrl,isBusy:()=>uploadBusy});
 const date = d => d ? d.replaceAll('-', '.') : '未记录';
 const period = r => r.shotStart || r.shotEnd ? `${date(r.shotStart)} — ${date(r.shotEnd)}` : '拍摄时间未记录';
@@ -230,12 +231,12 @@ function renderViewer() {
   const photos = visiblePhotos(), p = photos[viewerIndex]; if (!p) { $('#viewer-dialog').close(); return; }
   const r = current(), index = r.photos.indexOf(p)+1, variants=photoVersions(p),version=variants.find(v=>v.id===viewerVersion)||preferredVersion(p);viewerVersion=version.id;
   $('#viewer-version').innerHTML=variants.map(v=>`<option value="${v.id}">${v.kind==='finished'?'成片':v.kind==='scan'?'扫描原片':'照片'} · ${esc(v.mime?.split('/')[1]?.toUpperCase()||'IMAGE')} · ${esc(v.name)}</option>`).join('');$('#viewer-version').value=viewerVersion;
-  $('#viewer-img').src=`/api/rolls/${r.id}/photos/${p.id}/display?version=${version.id}&rotation=${p.rotation||0}&redEye=${$('#viewer-show-red-eye').checked?1:0}&edit=${p.redEye?.[version.id]?.revision||''}`;$('#viewer-img').alt=version.name;$('#viewer-img').style.opacity='.45';$('#viewer-error').textContent='正在载入照片…';
+  $('#viewer-img').src=`/api/rolls/${r.id}/photos/${p.id}/display?version=${version.id}&rotation=${p.rotation||0}&redEye=${$('#viewer-show-red-eye').checked?1:0}&edit=${p.redEye?.[version.id]?.revision||''}&renderer=${redEyeRenderVersion}`;$('#viewer-img').alt=version.name;$('#viewer-img').style.opacity='.45';$('#viewer-error').textContent='正在载入照片…';
   $('#viewer-label').textContent = `${r.title} / FRAME ${String(index).padStart(2,'0')}`;
   $('#viewer-info').textContent = `${version.name} · ${(version.bytes/1024/1024).toFixed(1)} MB · ${viewerIndex+1} / ${photos.length}`;
   $('#viewer-star').textContent = p.starred ? '★ 已精选' : '☆ 精选';
   $('#download-original').href=`/api/rolls/${r.id}/photos/${p.id}/original?version=${version.id}`;$('#download-original').download=version.name;$('#download-original').textContent=version.mime==='image/tiff'?'下载原始 TIFF':'下载当前原图';
-  $('#download-corrected').hidden=!hasRedEye(p,version);$('#download-corrected').href='/api/rolls/'+r.id+'/photos/'+p.id+'/red-eye-export?version='+version.id+'&edit='+(p.redEye?.[version.id]?.revision||'');
+  $('#download-corrected').hidden=!hasRedEye(p,version);$('#download-corrected').href='/api/rolls/'+r.id+'/photos/'+p.id+'/red-eye-export?version='+version.id+'&edit='+(p.redEye?.[version.id]?.revision||'')+'&renderer='+redEyeRenderVersion;
   $('#viewer-prev').disabled = viewerIndex === 0; $('#viewer-next').disabled = viewerIndex === photos.length-1;
 }
 function stepViewer(step) { const next = viewerIndex + step; if (next >= 0 && next < visiblePhotos().length) { viewerIndex = next;viewerVersion=null; renderViewer(); } }

@@ -1,3 +1,4 @@
+import {redEyeRenderVersion} from './red-eye-version.mjs';
 import {fromDisplay,toDisplay} from './red-eye-coordinates.mjs';
 const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const labels={corrected:'已修正',review:'待核对',clean:'未检出明显红眼','no-face':'未识别人脸',error:'处理失败'};
@@ -5,7 +6,7 @@ export function setupRedEye({getLibrary,getCurrent,getSelection,getVersion,getVi
   const dialog=$('#red-eye-dialog');let rollId=null,job=null,photoId=null,versionId=null,poll=null,busy=false,manual=false,canvasToken=0;
   const roll=()=>getLibrary().rolls.find(r=>r.id===rollId),photo=()=>roll()?.photos.find(p=>p.id===photoId),record=()=>photo()?.redEye?.[versionId];
   const endpoint=(id=photoId,vid=versionId)=>`/api/rolls/${rollId}/photos/${id}/red-eye?version=${encodeURIComponent(vid)}`;
-  const imageURL=(before=false)=>`/api/rolls/${rollId}/photos/${photoId}/display?version=${encodeURIComponent(versionId)}&rotation=${photo()?.rotation||0}&redEye=${before?0:1}&edit=${record()?.revision||''}`;
+  const imageURL=(before=false)=>`/api/rolls/${rollId}/photos/${photoId}/display?version=${encodeURIComponent(versionId)}&rotation=${photo()?.rotation||0}&redEye=${before?0:1}&edit=${record()?.revision||''}&renderer=${redEyeRenderVersion}`;
   async function request(url){const response=await fetch(url),result=await response.json();if(!response.ok)throw new Error(result.error||'去红眼请求失败');return result;}
   function open(){if(!dialog.open)dialog.showModal();$('#red-eye-error').textContent='';}
   function active(){return job&&['queued','running'].includes(job.status);}
@@ -30,9 +31,9 @@ export function setupRedEye({getLibrary,getCurrent,getSelection,getVersion,getVi
     const p=photo(),rec=record();$('#red-eye-editor').hidden=!p;if(!p)return;
     $('#red-eye-photo-title').textContent=p.name;$('#red-eye-photo-note').textContent=rec?.note||'尚未检测。可先检测，再手动点选漏检的红眼。';
     $('#red-eye-rescan').disabled=busy||!!active();$('#red-eye-photo-undo').disabled=busy||!rec;
-    const enabled=rec?.regions.some(r=>r.enabled&&r.strength>0),url=`/api/rolls/${rollId}/photos/${photoId}/red-eye-export?version=${encodeURIComponent(versionId)}&edit=${rec?.revision||''}`;
+    const enabled=rec?.regions.some(r=>r.enabled&&r.strength>0),url=`/api/rolls/${rollId}/photos/${photoId}/red-eye-export?version=${encodeURIComponent(versionId)}&edit=${rec?.revision||''}&renderer=${redEyeRenderVersion}`;
     $('#red-eye-export').hidden=!enabled;$('#red-eye-export').href=url;
-    $('#red-eye-regions').innerHTML=(rec?.regions||[]).map((region,index)=>{const base=`/api/rolls/${rollId}/photos/${photoId}/red-eye-eye?version=${encodeURIComponent(versionId)}&region=${region.id}&edit=${rec.revision}`;return `<article class="red-eye-region"><div class="red-eye-pair"><figure><img src="${base}&before=1" alt="第 ${index+1} 只眼修正前"><figcaption>原图眼部</figcaption></figure><figure><img src="${base}" alt="第 ${index+1} 只眼修正后"><figcaption>修正后</figcaption></figure></div><div><label class="check-label"><input type="checkbox" data-red-enabled="${index}" ${region.enabled?'checked':''}>${region.manual?'手动选区':region.enabled?'自动修正':'疑似，请核对'}</label><label>强度<input type="range" min="0" max="100" value="${Math.round(region.strength*100)}" data-red-strength="${index}" aria-label="第 ${index+1} 只眼修正强度"></label><label>范围<input type="range" min="60" max="180" step="5" value="${Math.round(region.rx/(region.baseRx||region.rx)*100)}" data-red-size="${index}" aria-label="第 ${index+1} 只眼修正范围"></label><button class="danger-text" data-red-remove="${index}">删除选区</button></div></article>`;}).join('')||'<p class="muted">暂无眼部选区。漏检时可以手动点选红色瞳孔。</p>';
+    $('#red-eye-regions').innerHTML=(rec?.regions||[]).map((region,index)=>{const base=`/api/rolls/${rollId}/photos/${photoId}/red-eye-eye?version=${encodeURIComponent(versionId)}&region=${region.id}&edit=${rec.revision}&renderer=${redEyeRenderVersion}`;return `<article class="red-eye-region"><div class="red-eye-pair"><figure><img src="${base}&before=1" alt="第 ${index+1} 只眼修正前"><figcaption>原图眼部</figcaption></figure><figure><img src="${base}" alt="第 ${index+1} 只眼修正后"><figcaption>修正后</figcaption></figure></div><div><label class="check-label"><input type="checkbox" data-red-enabled="${index}" ${region.enabled?'checked':''}>${region.manual?'手动选区':region.enabled?'自动修正':'疑似，请核对'}</label><label>强度<input type="range" min="0" max="100" value="${Math.round(region.strength*100)}" data-red-strength="${index}" aria-label="第 ${index+1} 只眼修正强度"></label><label>范围<input type="range" min="60" max="180" step="5" value="${Math.round(region.rx/(region.baseRx||region.rx)*100)}" data-red-size="${index}" aria-label="第 ${index+1} 只眼修正范围"></label><button class="danger-text" data-red-remove="${index}">删除选区</button></div></article>`;}).join('')||'<p class="muted">暂无眼部选区。漏检时可以手动点选红色瞳孔。</p>';
     if(redraw)drawCanvas();
   }
   async function selectPhoto(id,vid){photoId=id;versionId=vid;manual=false;$('#red-eye-zoom').value='1';$('#red-eye-canvas').classList.remove('picking');$('#red-eye-manual').setAttribute('aria-pressed','false');renderList();renderEditor();}
