@@ -30,6 +30,8 @@
 
 YuNet 2026may 动态输入模型来自 [OpenCV Zoo](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)，随仓库分发；下载地址、大小与 SHA-256 记录在 [manifest](../models/red-eye/manifest.json)，运行时核对哈希。其 MIT 许可证保存在 [LICENSE](../models/red-eye/LICENSE)。推理依赖固定为 `onnxruntime-node@1.31.1`，见 [官方 Node 平台支持](https://onnxruntime.ai/docs/get-started/with-javascript/node.html)。安装依赖需要联网，安装完成后的检测与修正不访问外部接口。
 
+项目 `.npmrc` 将 `onnxruntime-node-install` 设为 `skip`，仅跳过额外的 CUDA / TensorRT 下载；CPU 原生绑定仍由 npm 包提供并接受真实模型测试。请保留这个配置，避免 Linux 默认安装流程尝试下载本应用不使用的 GPU 库。
+
 交互参考 [GIMP 去红眼](https://docs.gimp.org/3.0/en/gimp-filter-red-eye-removal.html) 的局部选择 / 阈值思路，以及成熟照片管理软件的批量检测、人工核对流程。颜色分割及修正代码自行实现，未移植 GPL 滤镜源码。
 
 ## 验证范围
