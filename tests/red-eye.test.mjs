@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
 import bmp from 'bmp-js';
-import {findPupil,correctPixels,validateRegions} from '../red-eye-mask.mjs';
+import {findPupil,confirmEyePair,correctPixels,validateRegions} from '../red-eye-mask.mjs';
 import {fromDisplay,toDisplay} from '../public/red-eye-coordinates.mjs';
 import {readCanonical,sourceHash,renderCorrection,manualPupil} from '../red-eye-render.mjs';
 import {createRedEyeService} from '../red-eye-service.mjs';
@@ -23,6 +23,24 @@ test('四个显示方向的点选往返与 YuNet 输出坐标解码',()=>{
   for(const rotation of [0,90,180,270]){const p=toDisplay(.23,.61,rotation),q=fromDisplay(p.x,p.y,rotation);assert.ok(Math.abs(q.x-.23)<1e-9&&Math.abs(q.y-.61)<1e-9);}
   const outputs={};for(const stride of [8,16,32]){const n=(32/stride)**2;for(const [prefix,size] of [['cls',1],['obj',1],['bbox',4],['kps',10]])outputs[prefix+'_'+stride]={data:new Float32Array(n*size)};}
   outputs.cls_8.data[5]=.99;outputs.obj_8.data[5]=.99;outputs.bbox_8.data[20]=.5;outputs.bbox_8.data[21]=.5;outputs.bbox_8.data[22]=Math.log(2);outputs.bbox_8.data[23]=Math.log(2);const f=decodeYuNet(outputs,32,32)[0];assert.ok(Math.abs(f.x-4)<1e-5&&Math.abs(f.y-4)<1e-5);assert.ok(Math.abs(f.w-16)<1e-5);
+});
+test('棕红瞳孔、粉白高光与定位偏移可结合双眼证据确认，皮肤色块和正常黑瞳孔不误改',()=>{
+  const width=240,height=120,eyes=[{x:68,y:65},{x:188,y:65}],radius=28.8;
+  function fixture({dark=false,glint=true,noise=false}={}){const data=Buffer.alloc(width*height*3);for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+    const p=(y*width+x)*3;data.set([190,130,100],p);
+    for(const cx of [60,180]){const d=Math.hypot(x-cx,y-60);if(d<=10)data.set([140,50,60],p);if(dark&&d<=5)data.set([15,12,10],p);if(glint&&Math.hypot(x-cx+1,y-59)<=3)data.set([245,180,195],p);}
+    if(noise&&x>=65&&x<=66&&y===64)data.set([220,60,55],p);
+  }return data;}
+  const image=fixture(),candidates=eyes.map(e=>findPupil(image,width,height,{...e,radius,faceScore:.95,eyeAxis:{x:1,y:0}}));
+  assert.ok(candidates.every(c=>c?.evidence.hasHighlight));assert.ok(candidates.every(c=>c.evidence.coverage>.65));
+  assert.ok(candidates.every(c=>!c.enabled));
+  confirmEyePair(candidates,eyes,width,height);assert.ok(candidates.every(c=>c.enabled));assert.ok(candidates.every(c=>c.reason==='paired-pupils'));
+  const brown=fixture({dark:true,glint:false});assert.ok(eyes.every(e=>!findPupil(brown,width,height,{...e,radius,faceScore:.95,eyeAxis:{x:1,y:0}})?.enabled));
+  const skin=fixture({glint:false,noise:true});const rejected=eyes.map(e=>findPupil(skin,width,height,{...e,radius,faceScore:.95,eyeAxis:{x:1,y:0}}));confirmEyePair(rejected,eyes,width,height);assert.ok(rejected.every(c=>!c?.enabled));
+  const openReflection=fixture();for(const cx of [60,180])for(let y=57;y<=62;y++)for(let x=cx-14;x<=cx+1;x++)openReflection.set([190,130,100],(y*width+x)*3);
+  const openCandidates=eyes.map(e=>findPupil(openReflection,width,height,{...e,radius,faceScore:.95,eyeAxis:{x:1,y:0}}));confirmEyePair(openCandidates,eyes,width,height);assert.ok(openCandidates.every(c=>!c?.enabled));
+  const isolated=[{...candidates[0],enabled:false},null];confirmEyePair(isolated,eyes,width,height);assert.equal(isolated[0].enabled,false);
+  const offCentre=findPupil(image,width,height,{x:78,y:65,radius,faceScore:.95,eyeAxis:{x:1,y:0}});assert.ok(!offCentre?.enabled);
 });
 test('真实扫描偏色回归：中和红瞳孔不残留绿眼，保留高光和未选区域',()=>{
   for(const depth of [8,16]){

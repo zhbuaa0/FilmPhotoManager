@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import sharp from 'sharp';
 import {readCanonical,eightBit,sourceHash,redEyeEngine} from './red-eye-render.mjs';
-import {findPupil} from './red-eye-mask.mjs';
+import {findPupil,confirmEyePair} from './red-eye-mask.mjs';
 import {fromDisplay} from './public/red-eye-coordinates.mjs';
 import {openImage} from './image-preview.mjs';
 const modelRoot=new URL('./models/red-eye/',import.meta.url);
@@ -55,8 +55,10 @@ export async function detectFaces(image,rotation=0){
 export async function analyseRedEye(source,{rotation=0}={}){
   const hash=await sourceHash(source),image=await readCanonical(source),faces=await detectFaces(image,rotation),rgb=eightBit(image),regions=[];let tiny=0;
   for(const face of faces){const distance=Math.hypot(face.eyes[0].x-face.eyes[1].x,face.eyes[0].y-face.eyes[1].y);if(distance<8){tiny++;continue;}
-    for(const eye of face.eyes){const candidate=findPupil(rgb,image.width,image.height,{...eye,radius:Math.max(4,distance*.24),faceScore:face.score});if(candidate&&!regions.some(r=>Math.hypot((r.x-candidate.x)*image.width,(r.y-candidate.y)*image.height)<Math.max(r.rx*image.width,candidate.rx*image.width)))regions.push(candidate);}
+    const eyeAxis={x:(face.eyes[1].x-face.eyes[0].x)/distance,y:(face.eyes[1].y-face.eyes[0].y)/distance};
+    const candidates=face.eyes.map(eye=>findPupil(rgb,image.width,image.height,{...eye,radius:Math.max(4,distance*.24),faceScore:face.score,eyeAxis}));
+    for(const candidate of confirmEyePair(candidates,face.eyes,image.width,image.height))if(candidate&&!regions.some(r=>Math.hypot((r.x-candidate.x)*image.width,(r.y-candidate.y)*image.height)<Math.max(r.rx*image.width,candidate.rx*image.width)))regions.push(candidate);
   }
   if(await sourceHash(source)!==hash)throw new Error('检测过程中原文件已改变，请重试。');
-  return {sourceHash:hash,width:image.width,height:image.height,depth:image.depth,engine:redEyeEngine,coordinateSystem:'exif-upright-v1',colourInterpretation:image.colourInterpretation,faces:faces.length,regions,status:regions.some(r=>r.enabled)?'corrected':regions.length||tiny?'review':faces.length?'clean':'no-face',note:!faces.length?'未识别人脸，无法确认是否存在红眼，可手动点选。':tiny?'部分眼部像素过少，请放大核对。':regions.some(r=>!r.enabled)?'有疑似红眼，请核对眼部选区。':!regions.length?'未检测到明显红眼。':'已生成可撤销的红眼修正。',checkedAt:new Date().toISOString()};
+  return {sourceHash:hash,width:image.width,height:image.height,depth:image.depth,engine:redEyeEngine,coordinateSystem:'exif-upright-v1',colourInterpretation:image.colourInterpretation,faces:faces.length,regions,status:regions.some(r=>r.enabled)?'corrected':regions.length?'review':tiny?'uncertain':faces.length?'clean':'no-face',note:!faces.length?'未识别人脸，无法确认是否存在红眼，可手动点选。':regions.some(r=>!r.enabled)?'有符合瞳孔特征的候选需要核对。':tiny?'模型检测到的部分眼部像素过少，无法可靠判断，可放大后手动点选。':!regions.length?'未检测到符合瞳孔特征的明显红眼。':regions.some(r=>r.reason==='paired-pupils')?'已结合双眼位置、瞳孔形状和局部颜色生成修正。':'已结合瞳孔形状和周围颜色生成修正。',checkedAt:new Date().toISOString()};
 }

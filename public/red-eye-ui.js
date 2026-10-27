@@ -1,7 +1,7 @@
-import {redEyeRenderVersion} from './red-eye-version.mjs';
+import {redEyeRenderVersion,redEyeDetectionVersion} from './red-eye-version.mjs';
 import {fromDisplay,toDisplay} from './red-eye-coordinates.mjs';
 const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const labels={corrected:'已修正',review:'待核对',clean:'未检出明显红眼','no-face':'未识别人脸',error:'处理失败'};
+const labels={corrected:'已修正',review:'疑似红眼，待核对',uncertain:'眼部无法判断',clean:'未检出明显红眼','no-face':'未识别人脸',error:'处理失败'};
 export function setupRedEye({getLibrary,getCurrent,getSelection,getVersion,getViewer,refresh,onChange,send,toast}){
   const dialog=$('#red-eye-dialog');let rollId=null,job=null,photoId=null,versionId=null,poll=null,busy=false,manual=false,canvasToken=0;
   const roll=()=>getLibrary().rolls.find(r=>r.id===rollId),photo=()=>roll()?.photos.find(p=>p.id===photoId),record=()=>photo()?.redEye?.[versionId];
@@ -29,7 +29,7 @@ export function setupRedEye({getLibrary,getCurrent,getSelection,getVersion,getVi
   }
   function renderEditor({redraw=true}={}){
     const p=photo(),rec=record();$('#red-eye-editor').hidden=!p;if(!p)return;
-    $('#red-eye-photo-title').textContent=p.name;$('#red-eye-photo-note').textContent=rec?.note||'尚未检测。可先检测，再手动点选漏检的红眼。';
+    $('#red-eye-photo-title').textContent=p.name;$('#red-eye-photo-note').textContent=(rec&&rec.engine!==redEyeDetectionVersion?'检测规则已更新，重新检测可使用新判定。 ':'')+(rec?.note||'尚未检测。可先检测，再手动点选漏检的红眼。');
     $('#red-eye-rescan').disabled=busy||!!active();$('#red-eye-photo-undo').disabled=busy||!rec;
     const enabled=rec?.regions.some(r=>r.enabled&&r.strength>0),url=`/api/rolls/${rollId}/photos/${photoId}/red-eye-export?version=${encodeURIComponent(versionId)}&edit=${rec?.revision||''}&renderer=${redEyeRenderVersion}`;
     $('#red-eye-export').hidden=!enabled;$('#red-eye-export').href=url;
