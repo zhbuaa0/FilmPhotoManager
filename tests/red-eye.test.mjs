@@ -52,6 +52,44 @@ test('真实扫描偏色回归：中和红瞳孔不残留绿眼，保留高光�
     const zero=original.slice();correctPixels(zero,9,9,[{x:4/9,y:4/9,rx:3/9,ry:3/9,enabled:true,strength:0}],depth);assert.deepEqual(zero,original);
   }
 });
+test('修正只跟随红瞳孔：保留棕色虹膜、独立色块、粉白高光亮度和颗粒纹理',()=>{
+  for(const depth of [8,16]){
+    const width=120,height=80,unit=depth===16?257:1,raw=depth===16?new Uint16Array(width*height*3):Buffer.alloc(width*height*3);
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+      const d=Math.hypot(x-60,y-40),rgb=d<=8?[180,35+x%4*3,45+y%4*3]:d<=9?[125,65,70]:d<=14?[65,35,25]:[190,130,100];raw.set(rgb.map(v=>v*unit),(y*width+x)*3);
+    }
+    const pink=(38*width+59)*3,white=(39*width+59)*3,nearWhite=(40*width+59)*3,fleck=(38*width+76)*3;
+    raw.set([245,205,220].map(v=>v*unit),pink);raw.set([255,255,255].map(v=>v*unit),white);raw.set([255,254,254].map(v=>v*unit),nearWhite);raw.set([220,30,40].map(v=>v*unit),fleck);
+    const original=depth===16?raw.slice():Buffer.from(raw),light=(a,p)=>(.2126*a[p]+.7152*a[p+1]+.0722*a[p+2])/unit;
+    correctPixels(raw,width,height,[{x:.5,y:.5,rx:18/width,ry:18/height,enabled:true}],depth);
+    assert.ok(Math.abs(light(raw,pink)-light(original,pink))<.6);assert.deepEqual([...raw.slice(white,white+3)],[...original.slice(white,white+3)]);
+    assert.deepEqual([...raw.slice(fleck,fleck+3)],[...original.slice(fleck,fleck+3)]);
+    assert.deepEqual([...raw.slice(nearWhite,nearWhite+3)],[...original.slice(nearWhite,nearWhite+3)]);
+    const texture=[];for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+      const d=Math.hypot(x-60,y-40),p=(y*width+x)*3;
+      if(d>=13)assert.deepEqual([...raw.slice(p,p+3)],[...original.slice(p,p+3)]);
+      if(d<=7&&p!==pink&&p!==white&&p!==nearWhite){assert.ok(Math.max(...raw.slice(p,p+3))-Math.min(...raw.slice(p,p+3))<=unit);texture.push(raw[p]);}
+    }
+    assert.ok(Math.max(...texture)-Math.min(...texture)>=6*unit);
+  }
+});
+test('已确认瞳孔边缘不因椭圆羽化残留红环，强度可降低且不越过选区',()=>{
+  const width=31,height=31,input=Buffer.alloc(width*height*3,100);
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(Math.hypot(x-15,y-15)<=5)input.set([230,20,30],(y*width+x)*3);
+  const region={x:15/width,y:15/height,rx:6/width,ry:6/height,enabled:true,strength:1},full=correctPixels(Buffer.from(input),width,height,[region]),half=correctPixels(Buffer.from(input),width,height,[{...region,strength:.5}]),edge=(15*width+20)*3;
+  assert.ok(full[edge]-Math.max(full[edge+1],full[edge+2])<=1);assert.ok(half[edge]>full[edge]&&half[edge]<input[edge]);
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(Math.hypot(x-15,y-15)>=6){const p=(y*width+x)*3;assert.deepEqual(full.subarray(p,p+3),input.subarray(p,p+3));}
+});
+test('大块粉色或黄色闪光空洞也被完整中和，保留亮度及原有暗纹',()=>{
+  for(const depth of [8,16])for(const tint of [[245,205,80],[245,180,195]]){
+    const width=61,height=61,unit=depth===16?257:1,raw=depth===16?new Uint16Array(width*height*3):Buffer.alloc(width*height*3);
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++){const d=Math.hypot(x-30,y-30),rgb=d<=4?tint:d<=10?[210,40,50]:[150,125,110];raw.set(rgb.map(v=>v*unit),(y*width+x)*3);}
+    const dark=(30*width+31)*3;raw.set([15,12,10].map(v=>v*unit),dark);
+    correctPixels(raw,width,height,[{x:30/width,y:30/height,rx:14/width,ry:14/height,enabled:true}],depth);
+    const expected=.2126*tint[0]+.7152*tint[1]+.0722*tint[2];
+    for(let y=27;y<=33;y++)for(let x=27;x<=33;x++)if(Math.hypot(x-30,y-30)<=4){const p=(y*width+x)*3;if(p===dark){assert.deepEqual([...raw.slice(p,p+3)],[15,12,10].map(v=>v*unit));continue;}const values=[...raw.slice(p,p+3)];assert.ok(Math.max(...values)-Math.min(...values)<=unit);assert.ok(Math.abs(values[0]/unit-expected)<.6);}
+  }
+});
 test('16-bit TIFF 无损修正版保留位深、原尺寸和选区外像素，原文件不改写',async t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'red-eye16-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const source=path.join(root,'中文原片.tif'),target=path.join(root,'修正版.tif');
   await sharp(pixels(16),{raw:{width:160,height:100,channels:3}}).toColourspace('rgb16').tiff({compression:'deflate'}).toFile(source);

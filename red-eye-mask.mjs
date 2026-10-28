@@ -1,5 +1,6 @@
 // Independent local colour/shape classifier. Coordinates are EXIF-upright, before display rotation.
 export {redEyeRenderVersion} from './public/red-eye-version.mjs';
+import {correctPupilPixels} from './red-eye-pupil-render.mjs';
 export function redness(r,g,b){return Math.max(0,Math.min(1,(r-Math.max(g,b)-12)/80))*Math.max(0,Math.min(1,(r/(Math.max(g,b)+10)-1.25)/1.2));}
 const clamp=n=>Math.max(0,Math.min(1,n));
 const luminance=(r,g,b)=>.2126*r+.7152*g+.0722*b;
@@ -84,21 +85,7 @@ export function confirmEyePair(candidates,eyes,width,height){
   return candidates;
 }
 export function correctPixels(data,width,height,regions,depth=8){
-  const max=depth===16?65535:255,unit=max/255;
-  for(const region of regions.filter(r=>r.enabled)){
-    const cx=region.x*width,cy=region.y*height,rx=region.rx*width,ry=region.ry*height;
-    for(let y=Math.max(0,Math.floor(cy-ry));y<Math.min(height,Math.ceil(cy+ry));y++)for(let x=Math.max(0,Math.floor(cx-rx));x<Math.min(width,Math.ceil(cx+rx));x++){
-      const d=Math.hypot((x-cx)/rx,(y-cy)/ry);if(d>=1)continue;
-      const p=(y*width+x)*3,r=data[p]/unit,g=data[p+1]/unit,b=data[p+2]/unit;
-      // Once an eye is confirmed, include its pale red fringe; detection remains stricter.
-      const other=Math.max(g,b),weight=Math.max(0,Math.min(1,(r-other-3)/18))*Math.max(0,Math.min(1,(r/(other+1)-1.03)/.18));if(weight<=0)continue;
-      const feather=Math.min(1,(1-d)/.25),alpha=feather*weight*(region.strength??1),target=Math.min(data[p],(data[p+1]+data[p+2])*.5);
-      // Neutralise the confirmed red reflection in all channels. Leaving G/B untouched
-      // produced green pupils in real film scans with unequal green and blue values.
-      for(let c=0;c<3;c++)data[p+c]=Math.round(data[p+c]*(1-alpha)+target*alpha);
-    }
-  }
-  return data;
+  return correctPupilPixels(data,width,height,regions,depth,redness);
 }
 export function validateRegions(regions){
   if(!Array.isArray(regions)||regions.length>200)throw new Error('眼部选区无效或过多。');
