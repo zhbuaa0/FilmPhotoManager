@@ -3,7 +3,7 @@ import {fromDisplay,toDisplay} from './red-eye-coordinates.mjs';
 const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const labels={corrected:'已修正',review:'疑似红眼，待核对',uncertain:'眼部无法判断',clean:'未检出明显红眼','no-face':'未识别人脸',error:'处理失败'};
 export function setupRedEye({getLibrary,getCurrent,getSelection,getVersion,getViewer,refresh,onChange,send,toast}){
-  const dialog=$('#red-eye-dialog');let rollId=null,job=null,photoId=null,versionId=null,poll=null,busy=false,manual=false,canvasToken=0;
+  const dialog=$('#red-eye-dialog');let rollId=null,job=null,photoId=null,versionId=null,poll=null,busy=false,manual=false,previewBefore=false,canvasReady=false,canvasToken=0;
   const roll=()=>getLibrary().rolls.find(r=>r.id===rollId),photo=()=>roll()?.photos.find(p=>p.id===photoId),record=()=>photo()?.redEye?.[versionId];
   const endpoint=(id=photoId,vid=versionId)=>`/api/rolls/${rollId}/photos/${id}/red-eye?version=${encodeURIComponent(vid)}`;
   const imageURL=(before=false)=>`/api/rolls/${rollId}/photos/${photoId}/display?version=${encodeURIComponent(versionId)}&rotation=${photo()?.rotation||0}&redEye=${before?0:1}&edit=${record()?.revision||''}&renderer=${redEyeRenderVersion}`;
@@ -25,7 +25,17 @@ export function setupRedEye({getLibrary,getCurrent,getSelection,getVersion,getVi
   }
   function sizeCanvas(){const c=$('#red-eye-canvas');if(!c.width)return;const width=Math.min(c.width,$('#red-eye-editor').clientWidth,380*c.width/c.height);c.style.width=width*Number($('#red-eye-zoom').value)+'px';}
   function drawCanvas(){
-    const token=++canvasToken,img=new Image();$('#red-eye-canvas-note').textContent='正在载入原图预览…';img.onload=()=>{if(token!==canvasToken)return;const canvas=$('#red-eye-canvas'),scale=Math.min(1,1600/img.naturalWidth);canvas.width=Math.round(img.naturalWidth*scale);canvas.height=Math.round(img.naturalHeight*scale);const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,canvas.width,canvas.height);const rotation=photo()?.rotation||0;for(const r of record()?.regions||[]){const p=toDisplay(r.x,r.y,rotation),swap=rotation===90||rotation===270;ctx.strokeStyle=r.enabled?'#ff9c65':'#ffe182';ctx.lineWidth=2;ctx.setLineDash(r.enabled?[]:[4,3]);ctx.beginPath();ctx.ellipse(p.x*canvas.width,p.y*canvas.height,(swap?r.ry:r.rx)*canvas.width,(swap?r.rx:r.ry)*canvas.height,0,0,Math.PI*2);ctx.stroke();}sizeCanvas();$('#red-eye-canvas-note').textContent=manual?'点原图红瞳孔添加选区；修正前请核对下方眼部对照。':'原图预览；实线为已启用，虚线为待核对选区。';};img.onerror=()=>{if(token===canvasToken)$('#red-eye-canvas-note').textContent='原图暂不可用，请检查原目录。';};img.src=imageURL(true);
+    const token=++canvasToken,img=new Image(),rec=record(),before=manual||previewBefore||!rec,canvas=$('#red-eye-canvas'),label=before?'原图':'修正后';
+    canvasReady=false;canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);canvas.setAttribute('aria-busy','true');canvas.setAttribute('aria-label',before?'原图预览，可手动点选红眼':'红眼修正后预览');
+    $('#red-eye-preview').value=before?'original':'corrected';$('#red-eye-preview').disabled=manual||!rec;$('#red-eye-canvas-note').textContent=`正在载入${label}预览…`;
+    img.onload=()=>{
+      if(token!==canvasToken)return;
+      const scale=Math.min(1,1600/img.naturalWidth);canvas.width=Math.round(img.naturalWidth*scale);canvas.height=Math.round(img.naturalHeight*scale);const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      if(before){const rotation=photo()?.rotation||0;for(const r of rec?.regions||[]){const p=toDisplay(r.x,r.y,rotation),swap=rotation===90||rotation===270;ctx.strokeStyle=r.enabled?'#ff9c65':'#ffe182';ctx.lineWidth=2;ctx.setLineDash(r.enabled?[]:[4,3]);ctx.beginPath();ctx.ellipse(p.x*canvas.width,p.y*canvas.height,(swap?r.ry:r.rx)*canvas.width,(swap?r.rx:r.ry)*canvas.height,0,0,Math.PI*2);ctx.stroke();}}
+      canvasReady=true;canvas.setAttribute('aria-busy','false');sizeCanvas();
+      $('#red-eye-canvas-note').textContent=manual?'手动点选：正在显示原图，点红瞳孔添加选区；退出后恢复所选预览。':!rec?'尚未检测，当前显示原图。':before?'当前为原图，未应用修正；实线为已启用，虚线为待核对选区。':rec.regions.some(r=>r.enabled&&r.strength>0)?'当前为修正后预览，已应用启用的眼部选区；可切换原图对照。':'修正后预览：当前没有启用的选区，显示效果与原图相同。';
+    };
+    img.onerror=()=>{if(token!==canvasToken)return;canvas.setAttribute('aria-busy','false');$('#red-eye-canvas-note').textContent=`${label}预览暂不可用，请检查原目录或重试。`;};img.src=imageURL(before);
   }
   function renderEditor({redraw=true}={}){
     const p=photo(),rec=record();$('#red-eye-editor').hidden=!p;if(!p)return;
@@ -36,12 +46,12 @@ export function setupRedEye({getLibrary,getCurrent,getSelection,getVersion,getVi
     $('#red-eye-regions').innerHTML=(rec?.regions||[]).map((region,index)=>{const base=`/api/rolls/${rollId}/photos/${photoId}/red-eye-eye?version=${encodeURIComponent(versionId)}&region=${region.id}&edit=${rec.revision}&renderer=${redEyeRenderVersion}`;return `<article class="red-eye-region"><div class="red-eye-pair"><figure><img src="${base}&before=1" alt="第 ${index+1} 只眼修正前"><figcaption>原图眼部</figcaption></figure><figure><img src="${base}" alt="第 ${index+1} 只眼修正后"><figcaption>修正后</figcaption></figure></div><div><label class="check-label"><input type="checkbox" data-red-enabled="${index}" ${region.enabled?'checked':''}>${region.manual?'手动选区':region.enabled?'自动修正':'疑似，请核对'}</label><label>强度<input type="range" min="0" max="100" value="${Math.round(region.strength*100)}" data-red-strength="${index}" aria-label="第 ${index+1} 只眼修正强度"></label><label>范围<input type="range" min="60" max="180" step="5" value="${Math.round(region.rx/(region.baseRx||region.rx)*100)}" data-red-size="${index}" aria-label="第 ${index+1} 只眼修正范围"></label><button class="danger-text" data-red-remove="${index}">删除选区</button></div></article>`;}).join('')||'<p class="muted">暂无眼部选区。漏检时可以手动点选红色瞳孔。</p>';
     if(redraw)drawCanvas();
   }
-  async function selectPhoto(id,vid){photoId=id;versionId=vid;manual=false;$('#red-eye-zoom').value='1';$('#red-eye-canvas').classList.remove('picking');$('#red-eye-manual').setAttribute('aria-pressed','false');renderList();renderEditor();}
+  async function selectPhoto(id,vid){photoId=id;versionId=vid;manual=false;previewBefore=false;$('#red-eye-zoom').value='1';$('#red-eye-canvas').classList.remove('picking');$('#red-eye-manual').setAttribute('aria-pressed','false');renderList();renderEditor();}
   async function update(){if(!job)return;job=await request(`/api/rolls/${rollId}/red-eye?job=${job.id}`);renderJob();if(!active()){clearInterval(poll);poll=null;await refresh();onChange();renderList();renderEditor();if(!dialog.open)toast('去红眼任务完成，可打开结果核对。');}}
   function watch(){clearInterval(poll);poll=setInterval(()=>{void update().catch(e=>{$('#red-eye-error').textContent=e.message;});},1200);}
   async function start(ids,specificVersion){
     const r=getCurrent();if(!r||!ids.length)return toast('请先选择照片。');rollId=r.id;open();
-    try{job=await send(`/api/rolls/${rollId}/red-eye`,'POST',{ids,version:$('#version-view').value,...(specificVersion?{versionId:specificVersion}:{})});photoId=ids[0];versionId=job.items[0].versionId;renderJob();renderList();renderEditor();watch();}catch(e){$('#red-eye-error').textContent=e.message;}
+    try{job=await send(`/api/rolls/${rollId}/red-eye`,'POST',{ids,version:$('#version-view').value,...(specificVersion?{versionId:specificVersion}:{})});renderJob();await selectPhoto(ids[0],job.items[0].versionId);watch();}catch(e){$('#red-eye-error').textContent=e.message;}
   }
   async function review(viewer){const r=getCurrent();if(!r)return;rollId=r.id;open();try{job=await request(`/api/rolls/${rollId}/red-eye`);renderJob();const item=job?.items.find(i=>r.photos.some(p=>p.id===i.photoId)),p=viewer?.photo||r.photos.find(p=>p.id===item?.photoId)||r.photos.find(p=>p.redEye)||r.photos[0];if(p)await selectPhoto(p.id,viewer?.version?.id||(p.id===item?.photoId?item.versionId:getVersion(p).id));renderList();if(active())watch();}catch(e){$('#red-eye-error').textContent=e.message;}}
   async function mutate(input){if(busy||!record())return;busy=true;dialog.classList.add('is-saving');$('#red-eye-error').textContent='';try{await send(endpoint(),'PUT',{revision:record().revision,...input});await refresh();onChange();renderList();renderEditor();}catch(e){$('#red-eye-error').textContent=e.message;}finally{busy=false;dialog.classList.remove('is-saving');$('#red-eye-rescan').disabled=!!active();$('#red-eye-photo-undo').disabled=!record();}}
@@ -53,11 +63,12 @@ export function setupRedEye({getLibrary,getCurrent,getSelection,getVersion,getVi
   $('#red-eye-cancel').onclick=async()=>{try{job=await send(`/api/rolls/${rollId}/red-eye/cancel`,'POST',{jobId:job.id});renderJob();}catch(e){$('#red-eye-error').textContent=e.message;}};
   $('#red-eye-job-undo').onclick=async()=>{try{const result=await send(`/api/rolls/${rollId}/red-eye/undo`,'POST',{jobId:job.id});await refresh();onChange();renderList();renderEditor();toast(`已撤销 ${result.changed} 张${result.skipped?'，保留后续修改 '+result.skipped+' 张':''}`);}catch(e){$('#red-eye-error').textContent=e.message;}};
   $('#red-eye-photo-undo').onclick=async()=>{try{await send(endpoint(),'DELETE',{revision:record().revision});await refresh();onChange();renderList();renderEditor();}catch(e){$('#red-eye-error').textContent=e.message;}};
-  $('#red-eye-manual').onclick=()=>{manual=!manual;$('#red-eye-manual').setAttribute('aria-pressed',manual);$('#red-eye-canvas').classList.toggle('picking',manual);$('#red-eye-canvas-note').textContent=manual?'点击下方原图中的红瞳孔，添加眼部修正。':'已结束手动点选。';};
+  $('#red-eye-preview').onchange=e=>{previewBefore=e.target.value==='original';drawCanvas();};
+  $('#red-eye-manual').onclick=()=>{manual=!manual;$('#red-eye-manual').setAttribute('aria-pressed',manual);$('#red-eye-canvas').classList.toggle('picking',manual);drawCanvas();};
   $('#red-eye-radius').oninput=e=>{$('#red-eye-radius-value').textContent=e.target.value+'%';};
   $('#red-eye-zoom').onchange=sizeCanvas;window.addEventListener('resize',sizeCanvas);
   $('#red-eye-canvas').onclick=async e=>{
-    if(!manual||busy)return;if(!record())return toast('请先运行一次检测，再添加漏检选区。');
+    if(!manual||busy)return;if(!record())return toast('请先运行一次检测，再添加漏检选区。');if(!canvasReady)return toast('原图载入中，请稍候再点选。');
     const bounds=e.currentTarget.getBoundingClientRect(),point=fromDisplay((e.clientX-bounds.left)/bounds.width,(e.clientY-bounds.top)/bounds.height,photo().rotation||0);await mutate({point:{...point,radius:Number($('#red-eye-radius').value)/100}});
   };
   $('#red-eye-regions').onchange=e=>{const rec=record();if(!rec)return;const enabled=e.target.dataset.redEnabled,strength=e.target.dataset.redStrength,size=e.target.dataset.redSize,regions=structuredClone(rec.regions);if(enabled!==undefined)regions[enabled].enabled=e.target.checked;else if(strength!==undefined)regions[strength].strength=Number(e.target.value)/100;else if(size!==undefined){regions[size].rx=Math.min(.12,(regions[size].baseRx||regions[size].rx)*Number(e.target.value)/100);regions[size].ry=Math.min(.12,(regions[size].baseRy||regions[size].ry)*Number(e.target.value)/100);}else return;void mutate({regions});};
